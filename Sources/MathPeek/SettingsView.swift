@@ -54,6 +54,21 @@ struct MainSettings: View {
         .onChange(of: prefs.areaWidth) { outline.flash(width: prefs.areaWidth, height: prefs.areaHeight) }
         .onChange(of: prefs.areaHeight) { outline.flash(width: prefs.areaWidth, height: prefs.areaHeight) }
 
+        Section("Maths") {
+            Picker(selection: $prefs.angles) {
+                Text("Degrees").tag(AngleUnit.degrees)
+                Text("Radians").tag(AngleUnit.radians)
+            } label: {
+                Text("Angles")
+                Text("For sin, cos and tan. A ° or π in the problem decides for it; calculus always uses radians.")
+            }
+            Toggle(isOn: $prefs.useAppleIntelligence) {
+                Text("Use Apple Intelligence")
+                Text(Tutor.unavailableReason ?? "For maths written over several lines, like stacked fractions, and word problems. It only turns them into maths; MathPeek works the answer out. It runs on this Mac.")
+            }
+            .disabled(!Tutor.isAvailable)
+        }
+
         Section("Answer") {
             Picker(selection: $prefs.answerSeconds) {
                 ForEach(Preferences.answerSecondsChoices, id: \.self) { seconds in
@@ -61,7 +76,20 @@ struct MainSettings: View {
                 }
             } label: {
                 Text("Keep it on screen for")
-                Text("It stays while the pointer is on it. Click it, or press ⌘C while it shows, to copy it.")
+                Text("It stays while the pointer is on it. Click it for the working, step by step; press ⌘C while it shows to copy the answer.")
+            }
+            LabeledContent {
+                HStack(spacing: 10) {
+                    Slider(value: $prefs.windowTranslucency, in: Preferences.translucencyRange)
+                    Text("\(Int((prefs.windowTranslucency * 100).rounded())) %")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, alignment: .trailing)
+                }
+                .frame(width: 220)
+            } label: {
+                Text("Window transparency")
+                Text("How much of what's behind shows through the working window.")
             }
         }
 

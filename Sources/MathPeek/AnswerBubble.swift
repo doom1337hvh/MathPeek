@@ -1,45 +1,52 @@
 import AppKit
-import Observation
 import SwiftUI
 
 /// What the bubble by the pointer shows.
 enum BubbleContent: Equatable {
     /// Shown only if reading takes a moment.
     case reading
-    /// `answer` as shown, `copy` as copied: no grouping, a plain minus.
-    case answer(sum: String, answer: String, copy: String)
+    /// The question, the answer, a decimal or a note under it, and what ⌘C copies.
+    case answer(sum: String, answer: String, detail: String?, copy: String, math: [MathLine] = [])
     case problem(sum: String, message: String)
     case message(symbol: String, title: String, detail: String)
+    /// Several separate problems, each with its answer; ⌘C copies them all.
+    case list(rows: [BubbleRow], copy: String)
 }
 
-@Observable @MainActor
-final class BubbleModel {
-    var content: BubbleContent = .reading
-    var isCopied = false
+struct BubbleRow: Hashable {
+    var question: String
+    var answer: String
+    /// The one nearest the pointer.
+    var isNearest: Bool
 }
 
-/// A small borderless bubble next to the pointer that fades away by itself. Clicking it
-/// copies the answer, and so does ⌘C while it shows. It never takes the focus from the app
-/// you're in.
+/// A small dark, semi-transparent bubble next to the pointer, which fades away by itself.
+/// Clicking it copies the answer, and so does ⌘C while it shows. It never takes the focus from
+/// the app you're in.
 @MainActor
 final class AnswerBubble {
     /// Told when there is (or stops being) an answer on screen to copy with ⌘C.
     var onCopyAvailable: ((Bool) -> Void)?
 
-    private let model = BubbleModel()
+    private var content: BubbleContent = .reading
+    private var isCopied = false
     private var panel: NSPanel?
-    private var surface: BubbleSurface?
     private var hosting: NSHostingView<BubbleView>?
-    /// Measures the content at a set maximum width, so a long sum is cut short in the middle.
-    private lazy var measurer = NSHostingController(rootView: BubbleView(model: model))
+    /// Measures exactly what's about to be shown, at a set maximum width, so a long sum is cut
+    /// short in the middle.
+    private let measurer = NSHostingController(rootView: BubbleView(content: .reading, isCopied: false))
     private var anchor = CGPoint.zero
-    private var seconds: Double = 5
     private var clickAction: (() -> Void)?
     private var isHovered = false
     private var hideTask: Task<Void, Never>?
     private var readingTask: Task<Void, Never>?
     /// Changes with every show, so a fade-out that finishes late doesn't hide a newer bubble.
     private var generation = 0
+
+    /// Makes the window now, so that it exists for ScreenCaptureKit to leave out of captures.
+    func preload() {
+        _ = panel ?? makePanel()
+    }
 
     /// Called as reading starts: shows "Reading…" by `point` if the answer takes more than a
     /// moment.
@@ -60,10 +67,17 @@ final class AnswerBubble {
 
     /// Copies the answer showing, if there is one, and says so.
     func copy() {
-        guard panel?.isVisible == true, case .answer(_, _, let copy) = model.content else { return }
+        guard panel?.isVisible == true else { return }
+        let copy: String
+        switch content {
+        case .answer(_, _, _, let text, _): copy = text
+        case .list(_, let text): copy = text
+        default: return
+        }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(copy, forType: .string)
-        model.isCopied = true
+        isCopied = true
+        refresh()
         scheduleHide(after: 0.9)
     }
 
@@ -88,12 +102,12 @@ final class AnswerBubble {
     private func present(_ content: BubbleContent, at point: CGPoint, for seconds: Double, action: (() -> Void)?) {
         generation += 1
         let panel = panel ?? makePanel()
-        model.content = content
-        model.isCopied = false
+        self.content = content
+        isCopied = false
         anchor = point
-        self.seconds = seconds
         clickAction = action
-        place(panel)
+        refresh()
+        place(panel, showing: BubbleView(content: content, isCopied: false))
         if !panel.isVisible {
             panel.alphaValue = 0
             panel.orderFrontRegardless()
@@ -102,7 +116,10 @@ final class AnswerBubble {
             context.duration = 0.12
             panel.animator().alphaValue = 1
         }
-        if case .answer = content { onCopyAvailable?(true) } else { onCopyAvailable?(false) }
+        switch content {
+        case .answer, .list: onCopyAvailable?(true)
+        default: onCopyAvailable?(false)
+        }
         if !isHovered { scheduleHide(after: seconds) }
     }
 
@@ -116,8 +133,8 @@ final class AnswerBubble {
     }
 
     /// Below and to the right of the pointer, or wherever it fits on that screen.
-    private func place(_ panel: NSPanel) {
-        guard let hosting, let surface else { return }
+    private func place(_ panel: NSPanel, showing view: BubbleView) {
+        measurer.rootView = view
         let fitting = measurer.sizeThatFits(in: CGSize(width: 460, height: 2000))
         let size = CGSize(width: ceil(fitting.width), height: ceil(fitting.height))
         let gap: CGFloat = 14
@@ -129,14 +146,13 @@ final class AnswerBubble {
         origin.x = min(max(origin.x, visible.minX), visible.maxX - size.width)
         origin.y = min(max(origin.y, visible.minY), visible.maxY - size.height)
         panel.setFrame(CGRect(origin: origin, size: size), display: true)
-        surface.frame = CGRect(origin: .zero, size: size)
-        hosting.frame = surface.bounds
         panel.invalidateShadow()
     }
 
     private func makePanel() -> NSPanel {
+        // Not deferred: the window exists from the start, so captures can leave it out.
         let panel = NSPanel(contentRect: CGRect(x: 0, y: 0, width: 100, height: 50),
-                            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+                            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
@@ -145,43 +161,71 @@ final class AnswerBubble {
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
         panel.isMovable = false
+        panel.appearance = NSAppearance(named: .darkAqua)
 
-        let surface = BubbleSurface()
-        surface.material = .popover
-        surface.blendingMode = .behindWindow
-        surface.state = .active
-        surface.maskImage = Self.roundedMask(radius: 12)
+        let hosting = PassThroughHostingView(rootView: BubbleView(content: content, isCopied: false))
+        hosting.sizingOptions = []
+        let surface = BubbleSurface(frame: panel.contentLayoutRect, content: hosting)
         surface.onClick = { [weak self] in self?.clicked() }
         surface.onHover = { [weak self] inside in self?.hovered(inside) }
-        let hosting = PassThroughHostingView(rootView: BubbleView(model: model))
-        hosting.sizingOptions = []
-        surface.addSubview(hosting)
         panel.contentView = surface
 
         self.panel = panel
-        self.surface = surface
         self.hosting = hosting
         return panel
     }
 
+    /// Opens the working, or whatever the message offers.
     private func clicked() {
-        if case .answer = model.content {
+        if let clickAction {
+            clickAction()
+            hide()
+        } else if case .answer = content {
             copy()
         } else {
-            clickAction?()
             hide()
         }
     }
 
-    /// The bubble stays while the pointer is on it.
+    /// Redraws the bubble for what it's showing now.
+    private func refresh() {
+        hosting?.rootView = BubbleView(content: content, isCopied: isCopied, opens: isHovered && clickAction != nil)
+    }
+
+    /// The bubble stays while the pointer is on it, and shows that a click opens the working.
     private func hovered(_ inside: Bool) {
         isHovered = inside
+        refresh()
         if inside {
             hideTask?.cancel()
         } else if panel?.isVisible == true {
-            scheduleHide(after: model.isCopied ? 0.5 : 1.5)
+            scheduleHide(after: isCopied ? 0.5 : 1.5)
         }
     }
+}
+
+/// The bubble's background: dark and semi-transparent, like the working window. It takes the
+/// clicks for the whole bubble and notices the pointer.
+private final class BubbleSurface: NSView {
+    var onClick: (() -> Void)?
+    var onHover: ((Bool) -> Void)?
+    private var trackingArea: NSTrackingArea?
+
+    init(frame: CGRect, content: NSView) {
+        super.init(frame: frame)
+        let material = NSVisualEffectView(frame: bounds)
+        material.material = .hudWindow
+        material.blendingMode = .behindWindow
+        material.state = .active
+        material.maskImage = Self.roundedMask(radius: BubbleView.cornerRadius)
+        material.autoresizingMask = [.width, .height]
+        content.frame = material.bounds
+        content.autoresizingMask = [.width, .height]
+        material.addSubview(content)
+        addSubview(material)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     private static func roundedMask(radius: CGFloat) -> NSImage {
         let edge = radius * 2 + 1
@@ -194,13 +238,11 @@ final class AnswerBubble {
         image.resizingMode = .stretch
         return image
     }
-}
 
-/// The bubble's frosted background, which takes the clicks and notices the pointer.
-private final class BubbleSurface: NSVisualEffectView {
-    var onClick: (() -> Void)?
-    var onHover: ((Bool) -> Void)?
-    private var trackingArea: NSTrackingArea?
+    /// Clicks anywhere on the bubble come here, not to the views inside it.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        frame.contains(point) ? self : nil
+    }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -227,60 +269,121 @@ private final class PassThroughHostingView<Content: View>: NSHostingView<Content
 }
 
 struct BubbleView: View {
-    let model: BubbleModel
+    let content: BubbleContent
+    let isCopied: Bool
+    /// Whether to show that a click opens the working: while the pointer is on it.
+    var opens = false
+
+    static let cornerRadius: CGFloat = 12
+    private static let blue = Color(red: 0.04, green: 0.62, blue: 1.0)
+    private static let green = Color(red: 0.37, green: 0.85, blue: 0.57)
+    private static let secondary = Color.white.opacity(0.6)
+    private static let tint = Color(red: 0.07, green: 0.075, blue: 0.105)
 
     var body: some View {
-        content
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-    }
-
-    @ViewBuilder private var content: some View {
-        switch model.content {
-        case .reading:
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text("Reading…").foregroundStyle(.secondary)
-            }
-        case .answer(let sum, let answer, _):
-            VStack(alignment: .leading, spacing: 1) {
-                sumLine(sum)
-                Text(answer)
-                    .font(.system(size: 28, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                Text(model.isCopied ? "Copied" : "Click or ⌘C to copy")
-                    .font(.system(size: 10))
-                    .foregroundStyle(model.isCopied ? .secondary : .tertiary)
-            }
-        case .problem(let sum, let message):
-            VStack(alignment: .leading, spacing: 3) {
-                sumLine(sum)
-                Text(message).font(.system(size: 17, weight: .semibold, design: .rounded))
-            }
-        case .message(let symbol, let title, let detail):
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: symbol)
-                    .font(.system(size: 20))
-                    .foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.headline)
-                    Text(detail)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+        body(for: content)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .foregroundStyle(Color.white.opacity(0.95))
+            // Rounded like the material's mask, so the tint stays inside the corners.
+            .background(RoundedRectangle(cornerRadius: Self.cornerRadius).fill(Self.tint.opacity(0.45)))
+            .overlay(RoundedRectangle(cornerRadius: Self.cornerRadius).strokeBorder(Color.white.opacity(0.12)))
+            .overlay(alignment: .topTrailing) {
+                if opens && !isCopied {
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Self.secondary)
+                        .padding(7)
                 }
             }
-            .frame(width: 300, alignment: .leading)
+            .environment(\.colorScheme, .dark)
+    }
+
+    @ViewBuilder private func body(for content: BubbleContent) -> some View {
+        switch content {
+        case .reading:
+            HStack(spacing: 10) {
+                ProgressView().controlSize(.small)
+                Text("Reading").font(.system(size: 13, weight: .medium)).foregroundStyle(Self.secondary)
+            }
+        case .answer(let sum, let answer, let detail, _, let math):
+            VStack(alignment: .leading, spacing: 8) {
+                caption(sum)
+                if math.count == 1 {
+                    MathLineView(line: math[0], size: 28, design: .default, weight: .semibold)
+                } else if !math.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(Array(math.enumerated()), id: \.offset) { _, line in
+                            chip(highlighted: true) { MathLineView(line: line, size: 18, design: .default, weight: .medium) }
+                        }
+                    }
+                } else {
+                    Text(answer)
+                        .font(.system(size: 22, weight: .semibold))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.6)
+                }
+                if let detail {
+                    Text(detail)
+                        .font(.system(size: 12).monospacedDigit())
+                        .foregroundStyle(Self.secondary)
+                        .lineLimit(2)
+                }
+            }
+        case .list(let rows, _):
+            VStack(alignment: .leading, spacing: 6) {
+                caption("\(rows.count) problems")
+                    .padding(.bottom, 2)
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    chip(highlighted: row.isNearest) {
+                        HStack(alignment: .firstTextBaseline, spacing: 14) {
+                            Text(row.question)
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(Self.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(width: 190, alignment: .leading)
+                            Text(row.answer)
+                                .font(.system(size: 13.5, weight: .semibold))
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            .fixedSize(horizontal: true, vertical: false)
+        case .problem(let sum, let message):
+            VStack(alignment: .leading, spacing: 6) {
+                caption(sum)
+                Text(message).font(.system(size: 16, weight: .semibold))
+            }
+        case .message(_, let title, let detail):
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 13.5, weight: .semibold))
+                Text(detail)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Self.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(width: 290, alignment: .leading)
         }
     }
 
-    private func sumLine(_ sum: String) -> some View {
-        Text(sum + " =")
-            .font(.system(size: 13, design: .rounded))
-            .monospacedDigit()
-            .foregroundStyle(.secondary)
+    /// The line over the answer: the question, or "Copied" once it has been.
+    private func caption(_ text: String) -> some View {
+        Text(isCopied ? "Copied" : text)
+            .font(.system(size: 12.5, weight: isCopied ? .semibold : .regular))
+            .foregroundStyle(isCopied ? Self.green : Self.secondary)
             .lineLimit(1)
             .truncationMode(.middle)
+    }
+
+    /// A pill, blue when it's the one to look at.
+    private func chip<Content: View>(highlighted: Bool, @ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(highlighted ? Self.blue.opacity(0.18) : Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 }

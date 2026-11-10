@@ -14,7 +14,11 @@ let package = Package(
         .executableTarget(
             name: "MathPeek",
             dependencies: ["AppShell"],
-            path: "Sources/MathPeek"
+            path: "Sources/MathPeek",
+            linkerSettings: [
+                // Apple Intelligence is only on newer macOS; MathPeek works without it.
+                .unsafeFlags(["-weak_framework", "FoundationModels"]),
+            ]
         )
     ]
 )

@@ -29,11 +29,15 @@ final class Preferences {
         static let areaHeight = "areaHeight"
         static let answerSeconds = "answerSeconds"
         static let askedForScreenRecording = "askedForScreenRecording"
+        static let angles = "angles"
+        static let useAppleIntelligence = "useAppleIntelligence"
+        static let windowTranslucency = "windowTranslucency"
     }
 
     static let widthRange: ClosedRange<Double> = 200...1600
     static let heightRange: ClosedRange<Double> = 40...800
     static let answerSecondsChoices: [Double] = [3, 5, 10]
+    static let translucencyRange: ClosedRange<Double> = 0...0.9
 
     @ObservationIgnored var onEnabledChange: (() -> Void)?
     @ObservationIgnored var onHotkeyChange: (() -> Void)?
@@ -73,6 +77,22 @@ final class Preferences {
         didSet { save(answerSeconds, Key.answerSeconds) }
     }
 
+    /// Degrees or radians for sin, cos and tan. Calculus always uses radians.
+    var angles: AngleUnit {
+        didSet { save(angles.rawValue, Key.angles) }
+    }
+
+    /// Ask Apple Intelligence, on this Mac, about maths laid out over several lines and word
+    /// problems.
+    var useAppleIntelligence: Bool {
+        didSet { save(useAppleIntelligence, Key.useAppleIntelligence) }
+    }
+
+    /// How see-through the working window is: 0 is solid, 0.9 nearly clear.
+    var windowTranslucency: Double {
+        didSet { save(windowTranslucency, Key.windowTranslucency) }
+    }
+
     /// Whether macOS has shown its Screen Recording prompt; it only ever does once.
     var askedForScreenRecording: Bool {
         didSet { save(askedForScreenRecording, Key.askedForScreenRecording) }
@@ -86,6 +106,9 @@ final class Preferences {
             Key.areaHeight: 200.0,
             Key.answerSeconds: 5.0,
             Key.askedForScreenRecording: false,
+            Key.angles: AngleUnit.degrees.rawValue,
+            Key.useAppleIntelligence: true,
+            Key.windowTranslucency: 0.55,
         ])
         isEnabled = defaults.bool(forKey: Key.isEnabled)
         if let data = defaults.data(forKey: Key.hotkey) {
@@ -99,6 +122,9 @@ final class Preferences {
         let seconds = defaults.double(forKey: Key.answerSeconds)
         answerSeconds = Self.answerSecondsChoices.contains(seconds) ? seconds : 5
         askedForScreenRecording = defaults.bool(forKey: Key.askedForScreenRecording)
+        angles = AngleUnit(rawValue: defaults.string(forKey: Key.angles) ?? "") ?? .degrees
+        useAppleIntelligence = defaults.bool(forKey: Key.useAppleIntelligence)
+        windowTranslucency = Self.translucencyRange.clamp(defaults.double(forKey: Key.windowTranslucency))
     }
 
     /// A README clip (`-demo <scene>`) changes settings on screen, but never saves them.

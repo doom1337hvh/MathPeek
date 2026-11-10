@@ -9,6 +9,8 @@ final class MathReader {
     private let bubble: AnswerBubble
     private let picker = AreaPicker()
     private var task: Task<Void, Never>?
+    /// Opens the working: every problem found, and which to show first.
+    var showWorking: (([Solution], Int) -> Void)?
 
     init(prefs: Preferences, access: ScreenAccess, bubble: AnswerBubble) {
         self.prefs = prefs
@@ -60,10 +62,11 @@ final class MathReader {
               let area = ScreenArea(rect, focus: focus, on: screen) else { return }
         task?.cancel()
         bubble.prepare(at: anchor)
+        let options = ReadOptions(angles: prefs.angles, useModel: prefs.useAppleIntelligence)
         task = Task { [weak self] in
             // Off the main thread: text recognition takes a moment.
             let reading = await Task.detached(priority: .userInitiated) {
-                await ScreenReader.read(area)
+                await ScreenReader.read(area, options)
             }.value
             guard let self, !Task.isCancelled else { return }
             self.show(reading, at: anchor)
@@ -72,26 +75,58 @@ final class MathReader {
 
     private func show(_ reading: Reading, at anchor: CGPoint) {
         switch reading {
-        case .sum(let calculation):
-            switch calculation.answer {
-            case .success(let value):
-                bubble.show(.answer(sum: calculation.text, answer: Maths.format(value),
-                                    copy: Maths.format(value, forCopying: true)),
-                            at: anchor, for: prefs.answerSeconds)
-            case .failure(let problem):
-                bubble.show(.problem(sum: calculation.text, message: problem.message),
-                            at: anchor, for: prefs.answerSeconds)
+        case .solved(let solutions, let primary) where solutions.count > 1:
+            let open: () -> Void = { [weak self] in self?.showWorking?(solutions, primary) }
+            let rows = solutions.enumerated().map { index, solution in
+                BubbleRow(question: summary(of: solution), answer: solution.answers.isEmpty ? (solution.note ?? "No solution") : solution.answerText,
+                          isNearest: index == primary)
             }
+            let copy = solutions.enumerated().map { "\($0 + 1). \(copyText($1))" }.joined(separator: "\n")
+            bubble.show(.list(rows: Array(rows.prefix(6)), copy: copy), at: anchor, for: prefs.answerSeconds + 2, action: open)
+        case .solved(let solutions, _):
+            let solution = solutions[0]
+            let open: () -> Void = { [weak self] in self?.showWorking?(solutions, 0) }
+            guard !solution.answers.isEmpty else {
+                bubble.show(.problem(sum: summary(of: solution), message: solution.note ?? "No solution"),
+                            at: anchor, for: prefs.answerSeconds, action: open)
+                return
+            }
+            let detail = [solution.approximation, solution.note.flatMap { $0.hasPrefix("C is") ? nil : $0 }]
+                .compactMap { $0 }.joined(separator: " · ")
+            let math = solution.answerSets == nil && solution.answers.count <= 4 && solution.answerText.count <= 48
+                ? solution.answers : []
+            bubble.show(.answer(sum: summary(of: solution), answer: solution.answerText,
+                                detail: detail.isEmpty ? nil : detail, copy: copyText(solution), math: math),
+                        at: anchor, for: prefs.answerSeconds, action: open)
+        case .unsolved(let text):
+            bubble.show(.message(symbol: "questionmark.circle", title: "Can't work that out yet",
+                                 detail: "MathPeek read “\(text)” but doesn't know how to solve it."),
+                        at: anchor, for: 5)
         case .noMaths:
             let near = prefs.areaMode == .drag ? "in that area" : "near the pointer"
             bubble.show(.message(symbol: "questionmark.circle", title: "No maths found",
-                                 detail: "There's no sum to work out \(near)."),
+                                 detail: "There's nothing to work out \(near)."),
                         at: anchor, for: 3)
         case .failed(let reason):
             bubble.show(.message(symbol: "exclamationmark.triangle", title: "Couldn't read that",
                                  detail: reason),
                         at: anchor, for: 6)
         }
+    }
+
+    /// The question in a line: "12 × (3 + 4.5) =", "x² − 5x + 6 = 0", "d/dx x² sin x".
+    private func summary(of solution: Solution) -> String {
+        switch solution.problem.kind {
+        case .evaluate, .simplify:
+            return solution.question.text + " ="
+        default:
+            return LearnModel.summary(solution)
+        }
+    }
+
+    /// What ⌘C copies: the answer on its own, with a plain minus sign.
+    private func copyText(_ solution: Solution) -> String {
+        solution.answerText.replacingOccurrences(of: "−", with: "-")
     }
 
     /// Screen Recording. The first time, macOS asks, and the bubble says why; after that, the
