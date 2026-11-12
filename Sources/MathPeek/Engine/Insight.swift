@@ -90,7 +90,47 @@ enum Insight {
             return Anatomy(kind: "Substitution",
                            summary: "Replace each letter with its value, then work it out in order.",
                            parts: given + terms(expr).map { part($0, nil) })
+        case .sequence:
+            return Anatomy(kind: "Sequence", summary: "Find the rule that gives every term from its position, n.", parts: [])
+        case .diagram(.circle(let diagram), _):
+            let hasCircle = diagram.points.contains { $0.place == .onCircle || $0.place == .centre }
+            return Anatomy(kind: hasCircle ? "Circle diagram" : "Angle diagram",
+                           summary: hasCircle ? "Work from the angles that are given, one fact about circles at a time." : "Work from the angles that are given, one fact at a time.", parts: [])
+        case .worded:
+            return Anatomy(kind: "Question in words", summary: "Turn the words into sums, one step at a time.", parts: [])
+        case .diagram(.triangle, _):
+            return Anatomy(kind: "Triangle", summary: "Work from the sides and angles that are given to the one that's wanted.", parts: [])
+        case .remainder(let expr, let modulus):
+            return Anatomy(kind: "Remainder",
+                           summary: "Find what's left over after dividing by \(modulus), without working out the big numbers.",
+                           parts: terms(expr).map { term in
+                               if case .power(let base, let exponent) = term, let power = exponent.number?.integer, power > 20 {
+                                   return Anatomy.Part(expr: term, name: "Power",
+                                                       detail: "\(Format.text(base)) multiplied by itself \(power) times. Far too big to work out, but its remainders repeat.")
+                               }
+                               return part(term, nil)
+                           })
         }
+    }
+
+    /// What one part of some working is: a term, or a bracket in a product.
+    static func describe(_ expr: Expr, variable x: String?) -> (name: String, detail: String) {
+        if case .add = expr {
+            let count = terms(expr).count
+            if let x, let form = PolynomialForm(expr, in: x), form.degree == 1, form.coefficient(1).symbols.isEmpty {
+                let root = Simplify.run(.multiply([.minusOne, form.coefficient(0), .power(form.coefficient(1), .minusOne)]))
+                return ("Bracket", "A factor with \(count) terms. It's zero when \(x) = \(Format.text(root)).")
+            }
+            return ("Bracket", "\(count) terms, treated as one thing.")
+        }
+        if case .power(let base, let exponent) = expr, case .add = base {
+            return ("Bracket to a power", "\(Format.text(base)) multiplied by itself, \(Format.text(exponent)) times over.")
+        }
+        if case .symbol(let name) = expr {
+            return name == x ? ("Unknown", "The value being looked for.") : ("Letter", "Stands for a number.")
+        }
+        let described = part(expr, x)
+        return (described.name, described.detail)
     }
 
     /// The terms as written, however the sum was built up.
@@ -194,6 +234,13 @@ enum Insight {
     // MARK: Why each step works
 
     private static let guides: [(prefix: String, why: String, watchOut: String?)] = [
+        ("take the remainder of each number", "Numbers that differ by a multiple of the divisor leave the same remainder, so one can stand in for the other.", nil),
+        ("find a power of", "Once a power leaves remainder 1, multiplying by it changes nothing, so the remainders repeat from there.", nil),
+        ("reduce the power", "aᵐ⁺ⁿ = aᵐ × aⁿ, so every full cycle in the power is worth 1 and only what's left over counts.", "Divide the power by the length of the cycle, not by the number you're dividing by."),
+        ("follow the remainders", "Each remainder depends only on the one before, so once one comes round again the rest follow.", nil),
+        ("add the remainders", "Remainders add and multiply just like the numbers they came from.", "If the total reaches the divisor, take the remainder again."),
+        ("combine the remainders", "Remainders add and subtract just like the numbers they came from.", "A negative total still needs a remainder from 0 up: add the divisor."),
+        ("multiply the remainders", "Remainders add and multiply just like the numbers they came from.", "If the product reaches the divisor, take the remainder again."),
         ("find a common denominator", "You can only add or subtract fractions cut into the same size pieces. The lowest common multiple keeps the numbers small.", "Don't add the denominators: h/6 + 2h/9 isn't 3h/15."),
         ("rewrite each fraction", "Multiplying the top and bottom by the same number makes an equivalent fraction: the same value, written differently.", "Multiply the top as well as the bottom."),
         ("add the numerators", "With the same denominator the pieces are the same size, so you just count them.", "The denominator stays as it is."),

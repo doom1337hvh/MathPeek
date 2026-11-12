@@ -37,6 +37,8 @@ enum Tutor {
         You turn word problems into maths for a maths app. Choose one letter for each unknown. \
         Reply with exactly two lines. Line 1: the equation or equations separated by ; using + - * / ^ ( ) =, \
         or an expression to work out. Line 2: what each letter stands for, like: p = the price of a popcorn in £. \
+        When a formula is given and then some of its values, put each number into the formula: for "the nth term is \
+        an^2 + bn and the 2nd term is 2" write a*2^2 + b*2 = 2. Use only numbers that are in the problem. \
         Do not solve it and do not explain.
         """
 

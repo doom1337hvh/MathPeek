@@ -27,6 +27,14 @@ struct BubbleRow: Hashable {
 final class AnswerBubble {
     /// Told when there is (or stops being) an answer on screen to copy with ⌘C.
     var onCopyAvailable: ((Bool) -> Void)?
+    /// Told of each answer shown, for the history.
+    var onAnswer: ((BubbleContent) -> Void)?
+    /// Told when the bubble starts to go, however it goes: its time is up, it's clicked, or
+    /// it's put away.
+    var onHide: (() -> Void)?
+    /// The least time a bubble stays. Set while what was made out is drawn over the screen
+    /// (Settings, Debug), so a short message doesn't take the drawing away with it too soon.
+    var minimumSeconds: Double = 0
 
     private var content: BubbleContent = .reading
     private var isCopied = false
@@ -62,7 +70,8 @@ final class AnswerBubble {
     func show(_ content: BubbleContent, at point: CGPoint, for seconds: Double, action: (() -> Void)? = nil) {
         readingTask?.cancel()
         readingTask = nil
-        present(content, at: point, for: seconds, action: action)
+        onAnswer?(content)
+        present(content, at: point, for: max(seconds, minimumSeconds), action: action)
     }
 
     /// Copies the answer showing, if there is one, and says so.
@@ -87,6 +96,7 @@ final class AnswerBubble {
         hideTask?.cancel()
         guard let panel, panel.isVisible else { return }
         onCopyAvailable?(false)
+        onHide?()
         let shown = generation
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.3
@@ -310,16 +320,15 @@ struct BubbleView: View {
             VStack(alignment: .leading, spacing: 8) {
                 caption(sum)
                 if math.count == 1 {
-                    MathLineView(line: math[0], size: 28, design: .default, weight: .semibold)
+                    MathLineView(line: math[0], size: 28, design: Z.maths, weight: .semibold)
                 } else if !math.isEmpty {
                     HStack(spacing: 6) {
                         ForEach(Array(math.enumerated()), id: \.offset) { _, line in
-                            chip(highlighted: true) { MathLineView(line: line, size: 18, design: .default, weight: .medium) }
+                            chip(highlighted: true) { MathLineView(line: line, size: 18, design: Z.maths, weight: .medium) }
                         }
                     }
                 } else {
-                    Text(answer)
-                        .font(.system(size: 22, weight: .semibold))
+                    MathText(text: answer, size: 22, weight: .semibold)
                         .lineLimit(2)
                         .minimumScaleFactor(0.6)
                 }
@@ -337,14 +346,12 @@ struct BubbleView: View {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     chip(highlighted: row.isNearest) {
                         HStack(alignment: .firstTextBaseline, spacing: 14) {
-                            Text(row.question)
-                                .font(.system(size: 12.5))
+                            MathText(text: row.question, size: 12.5)
                                 .foregroundStyle(Self.secondary)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                                 .frame(width: 190, alignment: .leading)
-                            Text(row.answer)
-                                .font(.system(size: 13.5, weight: .semibold))
+                            MathText(text: row.answer, size: 13.5, weight: .semibold)
                                 .lineLimit(1)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -371,8 +378,7 @@ struct BubbleView: View {
 
     /// The line over the answer: the question, or "Copied" once it has been.
     private func caption(_ text: String) -> some View {
-        Text(isCopied ? "Copied" : text)
-            .font(.system(size: 12.5, weight: isCopied ? .semibold : .regular))
+        MathText(text: isCopied ? "Copied" : text, size: 12.5, weight: isCopied ? .semibold : .regular)
             .foregroundStyle(isCopied ? Self.green : Self.secondary)
             .lineLimit(1)
             .truncationMode(.middle)

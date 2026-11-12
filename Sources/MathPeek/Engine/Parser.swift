@@ -18,6 +18,15 @@ enum ProblemKind: Sendable {
     case integrate(Expr, variable: String, from: Expr?, to: Expr?)
     /// A formula and values for its letters: 3x + 2 when x = 4.
     case substitute(Expr, values: [String: Expr])
+    /// What's left over when a whole number is divided by another: 2^2026 + 3^2026 mod 13.
+    case remainder(Expr, modulus: Int)
+    /// The first terms of a sequence, to find its nth term.
+    case sequence([Expr])
+    /// A diagram read from a picture, and the angle or side of it to find.
+    case diagram(Diagram, find: String)
+    /// A question in words whose answer isn't one sum: a table of values, shares of a ratio.
+    /// The working is in the problem's lead.
+    case worded(question: String, answers: [MathLine])
 }
 
 struct Problem: Sendable {
@@ -30,6 +39,10 @@ struct Problem: Sendable {
     var angles: AngleUnit?
     /// The answer already written after =, as in "12 × 7.5 = 90", to check.
     var writtenAnswer: Expr?
+    /// Steps that come before the working: how a question in words became this maths.
+    var lead: [Step] = []
+    /// The answer is the number of a term in a sequence: a positive whole number.
+    var wantsTermNumber = false
 }
 
 /// Reads a problem written as text: "12 × (3 + 4.5)", "h/6 + 2h/9", "solve x² − 5x + 6 = 0",
@@ -45,17 +58,89 @@ enum Parser {
             Problem(kind: kind, text: display, usesDecimals: usesDecimals, angles: angles)
         }
 
-        // The instruction, if there is one.
-        var command = ""
-        let commands = ["solve", "simplify", "expand", "factorise", "factorize", "factor", "differentiate",
-                        "derivative of", "integrate", "integral of", "evaluate", "calculate", "work out",
-                        "find the value of", "find", "what is"]
-        for word in commands where text.lowercased().hasPrefix(word + " ") || text.lowercased().hasPrefix(word + ":") {
-            command = word
-            text = String(text.dropFirst(word.count)).trimmingCharacters(in: CharacterSet(charactersIn: " :"))
-            break
+        // Questions in words about sequences: "The nth term is an² + bn. The 2nd term is 2 …"
+        if let sequence = WordProblems.problem(input) { return sequence }
+
+        // x² : (3x + 5) = 1 : 2: two ratios that are equal, so multiply across.
+        if text.contains(":"), let regex = try? NSRegularExpression(pattern: #"^(?:solve |given that |given )?([^:=]+):([^:=]+)=([^:=]+):([^:=?]+?)[.? ]*$"#, options: [.caseInsensitive]),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) {
+            let sides = (1...4).compactMap { Range(match.range(at: $0), in: text).flatMap { expression(String(text[$0])) } }
+            // (With one unknown: "a : b = 4 : 3" says how two amounts compare, and isn't an equation to solve.)
+            if sides.count == 4, sides.reduce(Set<String>(), { $0.union($1.symbols) }).count == 1 {
+                let left = Expr.multiply([sides[0], sides[3]]), right = Expr.multiply([sides[1], sides[2]])
+                var problem = make(.solve([Equation(left: left, right: right)], unknowns: []))
+                problem.lead = [Step("Multiply across", "Two ratios that are equal: a : b = c : d means a × d = b × c.", [MathLine(left, right)])]
+                return problem
+            }
         }
-        text = text.replacingOccurrences(of: #"^the\s+"#, with: "", options: .regularExpression)
+
+        // "2^10 mod 7", "the remainder when 2^10 is divided by 7"
+        if let parts = remainderParts(text), let dividend = expression(parts.dividend),
+           let modulus = Int(parts.modulus), modulus >= 2 {
+            return make(.remainder(dividend, modulus: modulus))
+        }
+
+        // A full stop or question mark at the end isn't maths.
+        while let last = text.last, "?. ".contains(last) { text.removeLast() }
+        // "2 sin x = −1 for 0° ≤ x ≤ 360°": the range a trig equation is to be solved over,
+        // where it's the one the answers are given in anyway. (Any other range is left, and
+        // the equation with it: its answers would be other ones.)
+        if text.range(of: #"\b(?:sin|cos|tan)\b"#, options: .regularExpression) != nil,
+           let range = text.range(of: #"\s*,?\s*(?:for|where|in the range|given that)?\s*0 ?°?\s*(?:≤|<|⩽|<=)\s*[a-zθ] ?°?\s*(?:≤|<|⩽|<=)\s*360 ?°?$"#, options: [.regularExpression, .caseInsensitive]) {
+            text.removeSubrange(range)
+        }
+
+        // Words that lead up to the problem ("What is", "Find the"), then the instruction, if
+        // there is one, then words that go with it ("fully", "and simplify").
+        func take(_ words: [String]) -> String? {
+            let lower = text.lowercased()
+            for word in words where lower == word || lower.hasPrefix(word + " ") || lower.hasPrefix(word + ":") {
+                text = String(text.dropFirst(word.count)).trimmingCharacters(in: CharacterSet(charactersIn: " :"))
+                return word
+            }
+            return nil
+        }
+        let leadIns = ["rationalise the denominator and simplify", "rationalize the denominator and simplify", "rationalise the denominator of", "rationalize the denominator of",
+                       "rationalise the denominator", "rationalize the denominator", "rationalise", "rationalize",
+                       "find the value of", "what is the value of", "work out the value of", "calculate the value of",
+                       "what is", "what's", "find", "calculate", "work out", "evaluate", "compute", "determine",
+                       "write down", "please", "the value of", "the", "hence"]
+        while take(leadIns) != nil {}
+        var command = take(["solve", "simplify", "expand and simplify", "expand", "factorise", "factorize", "factor",
+                            "differentiate", "derivative of", "integrate", "integral of"]) ?? ""
+        if command == "expand and simplify" { command = "expand" }
+        if !command.isEmpty {
+            while take(["fully", "completely", "the following", "the expression", "the simultaneous equations",
+                        "simultaneous equations", "simultaneously", "the pair of equations", "the equations", "the equation",
+                        "equations", "the brackets", "and simplify", "the", "each of", "these"]) != nil {}
+        }
+        var unknowns: [String] = []
+        // "Solve for x: 5x − 2 = 13"
+        if command == "solve", let range = text.range(of: #"^for\s+[a-zA-Zα-ω]\s*[:,]\s*"#, options: .regularExpression) {
+            unknowns = [String(text[range].dropFirst(3).first { $0.isLetter }!)]
+            text = String(text[range.upperBound...])
+        }
+
+        // "f(x) = 3x + 2. Find f(4)", "Given that f(x) = x² − 3, find x when f(x) = 6"
+        if let regex = try? NSRegularExpression(pattern: #"^(?:given\s+(?:that\s+)?)?([a-zA-Z])\s*\(\s*([a-zA-Z])\s*\)\s*=\s*(.+?)[.;,]\s+(.+)$"#, options: [.caseInsensitive]),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let nameRange = Range(match.range(at: 1), in: text), let variableRange = Range(match.range(at: 2), in: text),
+           let bodyRange = Range(match.range(at: 3), in: text), let restRange = Range(match.range(at: 4), in: text),
+           let body = expression(String(text[bodyRange])) {
+            let name = NSRegularExpression.escapedPattern(for: String(text[nameRange])), variable = String(text[variableRange])
+            let rest = String(text[restRange]).replacingOccurrences(
+                of: #"^(?i)(find|work out|calculate|evaluate|what is|write down|solve|hence)\s+(the value of\s+)?(\#(variable)\s+(when|if|given that)\s+)?"#,
+                with: "", options: .regularExpression)
+            let call = "^" + name + #"\s*\((.+)\)"#
+            if rest.range(of: call + "$", options: .regularExpression) != nil,
+               let open = rest.firstIndex(of: "("), let value = expression(String(rest[rest.index(after: open)...].dropLast())) {
+                return make(.substitute(body, values: [variable: value]))
+            }
+            if let equals = rest.range(of: call + #"\s*=\s*"#, options: .regularExpression),
+               let value = expression(String(rest[equals.upperBound...])) {
+                return make(.solve([Equation(left: body, right: value)], unknowns: [variable]))
+            }
+        }
 
         // "… when x = 4, y = 2"
         if let range = text.range(of: #"\s+(when|if|where|for)\s+[a-zA-Zα-ω]\s*=.*$"#, options: .regularExpression) {
@@ -67,12 +152,12 @@ enum Parser {
                 guard sides.count == 2, sides[0].count == 1, let value = expression(sides[1]) else { return nil }
                 values[sides[0]] = value
             }
-            guard let formula = expression(text), !values.isEmpty else { return nil }
+            // "y when x = 10" has no x to put 10 into: it's the end of a longer question.
+            guard let formula = expression(text), !values.isEmpty, !formula.symbols.isDisjoint(with: values.keys) else { return nil }
             return make(.substitute(formula, values: values))
         }
 
         // "solve … for x"
-        var unknowns: [String] = []
         if let range = text.range(of: #"\s+for\s+[a-zA-Zα-ω](\s*(,|and)\s*[a-zA-Zα-ω])*$"#, options: .regularExpression) {
             let list = text[range].replacingOccurrences(of: #"^\s+for\s+"#, with: "", options: .regularExpression)
             unknowns = list.replacingOccurrences(of: "and", with: ",").split(separator: ",")
@@ -119,7 +204,7 @@ enum Parser {
         // Derivatives: "d/dx …", "d²y/dx²", "differentiate …"
         var order = 1
         var derivativeOf: String?
-        if let range = text.range(of: #"^d(\^?2|²)?\s*[a-zA-Z]?\s*/\s*d\s*([a-zA-Z])(\^?2|²)?"#, options: .regularExpression) {
+        if let range = text.range(of: #"^d(\^?\(?2\)?|²)?\s*[a-zA-Z]?\s*/\s*d\s*([a-zA-Z])(\^?\(?2\)?|²)?"#, options: .regularExpression) {
             let head = String(text[range])
             if head.contains("2") || head.contains("²") { order = 2 }
             derivativeOf = head.filter(\.isLetter).last.map(String.init)
@@ -136,8 +221,10 @@ enum Parser {
         // Statements: equations or expressions, one per line or separated by ; or a comma.
         let statements = text.split(whereSeparator: { $0 == ";" || $0 == "\n" })
             .flatMap { piece -> [Substring] in
-                piece.contains("=") && piece.filter({ $0 == "=" }).count > 1
-                    ? piece.split(separator: ",") : [piece]
+                // Several equations on a line, with commas or "and" between them.
+                guard piece.filter({ $0 == "=" }).count > 1 else { return [piece] }
+                return piece.replacingOccurrences(of: #"\s+and\s+"#, with: ",", options: .regularExpression)
+                    .split(separator: ",").map { Substring($0) }
             }
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
@@ -194,6 +281,27 @@ enum Parser {
         return make(.solve(equations, unknowns: unknowns))
     }
 
+    /// A question about a remainder, however it's worded: what's divided, what by, and where
+    /// in the text the question is.
+    static func remainderParts(_ text: String) -> (dividend: String, modulus: String, range: Range<String.Index>)? {
+        let patterns = [
+            #"remainder\s+(?:on|after|from|when)\s+dividing\s+(.+?)\s+by\s+(\d+)"#,
+            #"remainder\s+(?:when|if|of)?\s*(.+?),?\s+(?:is\s+|are\s+|was\s+)?divided\s+by\s+(\d+)"#,
+            #"(?:when|if)\s+(.+?)\s+is\s+divided\s+by\s+(\d+)[^.;]*?remainder"#,
+            #"(?:^|(?<=[\s¦:]))([^¦a-zA-Z]*[\d)][^¦]*?)\s*\(?\s*\bmod(?:ulo)?\s+(\d+)\s*\)?"#,
+        ]
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+                  let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                  let whole = Range(match.range, in: text), let dividend = Range(match.range(at: 1), in: text),
+                  let modulus = Range(match.range(at: 2), in: text) else { continue }
+            let trimmed = text[dividend].trimmingCharacters(in: .whitespaces.union(CharacterSet(charactersIn: ",:")))
+            guard !trimmed.isEmpty else { continue }
+            return (trimmed, String(text[modulus]), whole)
+        }
+        return nil
+    }
+
     /// "f(x) = x² + 1" or "y = …": the body, and the letter it's in.
     private static func definition(_ statement: String) -> (body: Expr, variable: String?)? {
         if let match = statement.range(of: #"^[a-zA-Z]\s*\(\s*[a-zA-Z]\s*\)\s*="#, options: .regularExpression) {
@@ -229,12 +337,25 @@ enum Parser {
     static let lookalikes: [Character: Character] = [
         "х": "x", "у": "y", "а": "a", "е": "e", "о": "o", "с": "c", "р": "p", "к": "k", "м": "m", "т": "t",
         "н": "h", "в": "b", "і": "i", "ј": "j", "Х": "X", "У": "Y", "А": "A", "В": "B", "Е": "E", "С": "C",
-        "З": "3", "з": "3",
+        "З": "3", "з": "3", "п": "π", "П": "π", "І": "I", "Ι": "I", "О": "O", "Т": "T", "Р": "P", "Н": "H", "К": "K", "М": "M",
+        "ѕ": "s", "ԁ": "d", "ı": "i",
     ]
 
     /// Writes the many ways maths is typed or read in one way.
     static func normalize(_ input: String) -> String {
         var text = input
+        // "3/4 ÷ 2/5" is one fraction divided by another, not 3 ÷ 4 ÷ 2 ÷ 5: beside a
+        // division sign, a number over a number is kept together.
+        if text.contains("÷") {
+            // (A mixed number first: 2 1/3 ÷ 1 1/4 is two and a third divided by one and a quarter,
+            // not 2 times a third.)
+            text = text.replacingOccurrences(of: #"(?<![\d/.^])(\d+)\s+(\d+)\s*/\s*(\d+)(?![\d.])"#, with: "($1+$2/$3)", options: .regularExpression)
+            text = text.replacingOccurrences(of: #"(?<![\d.)/^])(\d+)\s?/\s?(\d+)(?![\d.(/^]|\s?[a-zA-Z(])"#, with: "($1/$2)", options: .regularExpression)
+            // 4√6 ÷ 2√2 is 4√6 over 2√2, and 6x ÷ 2x is 6x over 2x: a number written against
+            // a root or a letter is one thing to divide by.
+            text = text.replacingOccurrences(of: #"÷\s*(\d+(?:\.\d+)?\s?√\s?(?:\d+(?:\.\d+)?|\([^()]*\))|\d+(?:\.\d+)?(?!sin|cos|tan|log|ln|pi)(?:[a-zA-Z](?:\^\d+|[²³])?){1,3})(?![\w(^√²³])"#,
+                                                with: "÷($1)", options: .regularExpression)
+        }
         let replacements: [(String, String)] = [
             ("×", "*"), ("✕", "*"), ("✖", "*"), ("∗", "*"), ("⋅", "*"), ("·", "*"),
             ("÷", "/"), ("∕", "/"), ("⁄", "/"),
@@ -245,7 +366,49 @@ enum Parser {
             ("≠", "!="), ("′", "'"), ("ʹ", "'"), ("’", "'"),
         ]
         for (from, to) in replacements { text = text.replacingOccurrences(of: from, with: to) }
+        // (A Cyrillic п is π, unless the sum is about n: "(6п)/(n² + 5)" has an n misread.)
+        if text.range(of: #"(?<![a-zA-Z])n(?![a-zA-Z])"#, options: .regularExpression) != nil {
+            text = text.replacingOccurrences(of: "п", with: "n")
+        }
         text = String(text.map { lookalikes[$0] ?? $0 })
+        // A recurring decimal, as the reader writes one: rec(0.1,5) is 0.1555…, the exact
+        // fraction it stands for.
+        if text.contains("rec("), let regex = try? NSRegularExpression(pattern: #"rec\((\d*)\.(\d*),(\d+)\)"#) {
+            for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).reversed() {
+                guard let whole = Range(match.range, in: text), let before = Range(match.range(at: 1), in: text), let fixed = Range(match.range(at: 2), in: text),
+                      let recurring = Range(match.range(at: 3), in: text), text[fixed].count + text[recurring].count <= 15,
+                      let units = Int(text[before].isEmpty ? "0" : String(text[before])), let still = Int(text[fixed].isEmpty ? "0" : String(text[fixed])),
+                      let turning = Int(text[recurring]) else { continue }
+                let shift = Int(pow(10, Double(text[fixed].count))), nines = Int(pow(10, Double(text[recurring].count))) - 1
+                text.replaceSubrange(whole, with: "(\((units * shift + still) * nines + turning)/\(shift * nines))")
+            }
+        }
+        // 80 000 000 is eighty million: a big number is written in groups of three with gaps
+        // between (and reading closes some of the gaps: "80 000000"). Only in a sum, where
+        // a row of separate numbers wouldn't be.
+        if text.range(of: #"[+*/=^%]|\d ?- ?\d|\bof\b"#, options: .regularExpression) != nil {
+            for _ in 0..<6 {
+                let joined = text.replacingOccurrences(of: #"(?<![\d.,/^])(\d{1,3}(?:\d{3})*) ((?:\d{3})+)(?![\d./])"#, with: "$1$2", options: .regularExpression)
+                if joined == text { break }
+                text = joined
+            }
+        }
+        // Words that stand for maths: 15% of 80, the square root of 81, 5 squared.
+        let phrases: [(String, String)] = [
+            (#"(?i)\b(the\s+)?square\s+root\s+of\s+"#, "√"), (#"(?i)\b(the\s+)?cube\s+root\s+of\s+"#, "∛"),
+            (#"(?i)\s+squared\b"#, "^2"), (#"(?i)\s+cubed\b"#, "^3"),
+            // 25% of 280 is one amount, whatever it's then divided into or multiplied by.
+            (#"(?i)(?<![\d.])(\d+(?:\.\d+)?)\s*%\s+of\s+(\d+(?:\.\d+)?)(?![\d.]|\s*[\^²³])"#, "($1% * $2)"),
+            (#"(?i)(?<=[\d%)])\s+of\s+(?=[\d(√])"#, " * "),
+            // Increase 60 by 20% is 60 + 20%.
+            (#"(?i)\bincrease\s+(\d+(?:\.\d+)?)\s+by\s+(\d+(?:\.\d+)?\s*%)"#, "$1 + $2"),
+            (#"(?i)\b(?:decrease|reduce)\s+(\d+(?:\.\d+)?)\s+by\s+(\d+(?:\.\d+)?\s*%)"#, "$1 - $2"),
+            // Mixed numbers: 2 1/2 is 2 + 1/2.
+            (#"(?<![\d/.^])(\d+)\s+(\d+)\s*/\s*(\d+)(?![\d.])"#, "($1+$2/$3)"),
+        ]
+        for (pattern, replacement) in phrases {
+            text = text.replacingOccurrences(of: pattern, with: replacement, options: .regularExpression)
+        }
         let superscripts: [Character: String] = ["⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5",
                                                  "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9", "ⁿ": "n", "ˣ": "x"]
         let subscripts: [Character: String] = ["₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4", "₅": "5",
@@ -316,9 +479,14 @@ enum Tokenizer {
                 tokens.append(.number(digits.contains(".") ? nil : Rational.parse(digits), value, digits))
                 continue
             }
+            if character == "π" {
+                tokens.append(.constant(.pi))
+                index += 1
+                continue
+            }
             if character.isLetter {
                 var word = ""
-                while index < characters.count, characters[index].isLetter {
+                while index < characters.count, characters[index].isLetter, characters[index] != "π" {
                     word.append(characters[index])
                     index += 1
                 }
@@ -342,9 +510,16 @@ enum Tokenizer {
     }
 
     /// "sinx" is sin x, "xy" is x × y, "2pi" is 2π.
+    /// Short words that are words, never letters multiplied together. ("at", "an" and "by"
+    /// aren't here: v = u + at, an² + bn and ax + by are maths.)
+    private static let plainWords: Set<String> = ["of", "or", "on", "the", "and", "for", "are", "was", "not", "but", "all", "can", "has", "had",
+                                                  "its", "out", "how", "why", "who", "use", "per", "you", "your", "from", "with"]
+
     private static func splitWord(_ word: String) -> [Token]? {
+        guard !plainWords.contains(word.lowercased()) else { return nil }
         var tokens: [Token] = []
         var rest = Substring(word)
+        var letters = 0
         while !rest.isEmpty {
             if let (name, function) = functionNames.first(where: { rest.lowercased().hasPrefix($0.0) }) {
                 switch name {
@@ -359,6 +534,9 @@ enum Tokenizer {
             let letter = String(rest.first!)
             tokens.append(letter == "e" ? .constant(.e) : .symbol(letter))
             rest = rest.dropFirst()
+            // xyz is x × y × z, but a longer run of letters is a word, not maths.
+            letters += 1
+            if letters > 3 { return nil }
         }
         return tokens
     }
@@ -505,6 +683,10 @@ struct ExpressionParser {
             guard take("|") else { throw SyntaxError() }
             return Value(expr: .function(.abs, value.expr))
         case .root(let n):
+            if take("-") {
+                let value = try postfix()
+                return Value(expr: (-value.expr).raised(.fraction(1, n)))
+            }
             let value = try postfix()
             return Value(expr: value.expr.raised(.fraction(1, n)))
         case .sqrtWord:
@@ -515,8 +697,10 @@ struct ExpressionParser {
             // sin²x, sin^2 x
             var exponent: Expr?
             if take("^") {
+                let bracketed = take("(")
                 guard case .number(let rational, let value, _)? = current else { throw SyntaxError() }
                 position += 1
+                if bracketed { guard take(")") else { throw SyntaxError() } }
                 exponent = .number(rational.map(Number.exact) ?? .real(value))
             }
             // log₂ 8

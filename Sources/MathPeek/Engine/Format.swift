@@ -62,6 +62,7 @@ enum Format {
             if case .number(let value) = factors.first, value.isNegative {
                 let rest = value.negated.isOne && factors.count > 1
                     ? Array(factors.dropFirst()) : [Expr.number(value.negated)] + factors.dropFirst()
+                if rest.count == 1, case .add = rest[0] { return (true, "(" + text(rest[0]) + ")") }
                 return (true, rest.count == 1 ? signedText(rest[0]).1 : productText(rest))
             }
             return (false, productText(factors))
@@ -73,7 +74,8 @@ enum Format {
     /// A product with a positive coefficient, with anything divided written after a /.
     private static func productText(_ factors: [Expr]) -> String {
         // Working shown before it's simplified can multiply several numbers: 2 × 4, 12 × 7.5 ÷ 3.
-        let numbers = factors.filter { if case .number = $0 { true } else { false } }
+        // (A product of numbers inside it counts as one of them: 5 × 5(5 × 5) is 5 × 5 × (5 × 5).)
+        let numbers = factors.filter { if case .number = $0 { true } else { isProductOfNumbers($0) } }
         if numbers.count > 1 || (numbers.count == 1 && factors.first?.number == nil) {
             var result = ""
             for (index, factor) in factors.enumerated() {
@@ -83,6 +85,7 @@ enum Format {
                 }
                 var piece = text(factor)
                 if case .add = factor { piece = "(" + piece + ")" }
+                if index > 0, isProductOfNumbers(factor) { piece = "(" + piece + ")" }
                 if case .number(let value) = factor, value.isNegative || value.rational?.isInteger == false { piece = "(" + piece + ")" }
                 result += index == 0 ? piece : " × " + piece
             }
@@ -118,6 +121,12 @@ enum Format {
         return numerator + "/" + denominator
     }
 
+    /// Whether it's numbers multiplied together and nothing else: the 5 × 5 in 5 × 5(5 × 5).
+    static func isProductOfNumbers(_ expr: Expr) -> Bool {
+        if case .multiply(let factors) = expr { return factors.allSatisfy { $0.symbols.isEmpty } }
+        return false
+    }
+
     /// Factors written next to each other: 3x²y, 2√3, 3(x + 1), x sin x.
     private static func joined(_ factors: [Expr], leadingNumber: String, bracketLastFunction: Bool = false) -> String {
         var result = leadingNumber
@@ -133,7 +142,11 @@ enum Format {
                 result += " " + piece
                 continue
             }
+            let numberToPower = { if case .power(.number, let e) = factor, e.number?.rational?.isInteger == true { true } else { false } }()
             if arithmetic, !result.isEmpty, piece.hasPrefix("(") {
+                result += " × " + piece
+            } else if numberToPower, !result.isEmpty {
+                // 6 × 1², not 61²
                 result += " × " + piece
             } else if let last = result.last, let first = piece.first, last.isNumber && first.isNumber {
                 result += " × " + piece
@@ -256,6 +269,31 @@ enum Format {
             }
             return result
         case .multiply(let factors):
+            // A minus in front: the sign, then the rest.
+            if case .number(let first)? = factors.first, first.isNegative, first.negated.isOne, factors.count > 1 {
+                let rest = Array(factors.dropFirst())
+                if rest.count == 1, case .add = rest[0] { return "-\\left(\(latex(rest[0]))\\right)" }
+                return "-" + (rest.count == 1 ? latex(rest[0]) : latex(.multiply(rest)))
+            }
+            // Working before it's simplified multiplies several numbers: each is written, with a × between.
+            let plain = factors.filter { $0.number != nil || isProductOfNumbers($0) }
+            // (And a number in front of something that starts with a number: 3 × 2x, not 32x.)
+            let startsWithNumber = factors.contains { if case .multiply(let inner) = $0 { inner.first?.number != nil && !isProductOfNumbers($0) } else { false } }
+            if plain.count > 1 || (plain.count == 1 && (isProductOfNumbers(factors[0]) || startsWithNumber)) {
+                var result = ""
+                for (index, factor) in factors.enumerated() {
+                    if index > 0, case .power(let base, let exponent) = factor, exponent == .minusOne {
+                        result += " \\div " + (isAtomic(base) ? latex(base) : "\\left(\(latex(base))\\right)")
+                        continue
+                    }
+                    var piece = latex(factor)
+                    if case .add = factor { piece = "\\left(\(piece)\\right)" }
+                    if index > 0, isProductOfNumbers(factor) { piece = "\\left(\(piece)\\right)" }
+                    if index > 0, case .number(let value) = factor, value.isNegative { piece = "\\left(\(piece)\\right)" }
+                    result += index == 0 ? piece : " \\times " + piece
+                }
+                return result
+            }
             var negative = false
             var topNumber = "", bottomNumber = ""
             var top: [String] = [], bottom: [String] = []
@@ -274,7 +312,9 @@ enum Format {
                     top.append(latexFactor(factor))
                 }
             }
-            let numerator = (topNumber + top.joined(separator: " ")).isEmpty ? "1" : topNumber + top.joined(separator: " ")
+            // 4 × 2³, not 42³: a number in front of something that starts with a digit keeps its ×.
+            let times = !topNumber.isEmpty && (top.first?.first?.isNumber ?? false) ? " \\times " : ""
+            let numerator = (topNumber + top.joined(separator: " ")).isEmpty ? "1" : topNumber + times + top.joined(separator: " ")
             let sign = negative ? "-" : ""
             if bottom.isEmpty && bottomNumber.isEmpty { return sign + numerator }
             return sign + "\\frac{\(numerator)}{\(bottomNumber + bottom.joined(separator: " "))}"

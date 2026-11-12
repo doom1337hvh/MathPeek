@@ -32,6 +32,8 @@ final class Preferences {
         static let angles = "angles"
         static let useAppleIntelligence = "useAppleIntelligence"
         static let windowTranslucency = "windowTranslucency"
+        static let showsWhatItSees = "showsWhatItSees"
+        static let keepsHistory = "keepsHistory"
     }
 
     static let widthRange: ClosedRange<Double> = 200...1600
@@ -93,6 +95,17 @@ final class Preferences {
         didSet { save(windowTranslucency, Key.windowTranslucency) }
     }
 
+    /// Draw what was made out over the screen each time it's read: every character's ink,
+    /// each line, and why a sum was left out. For finding out why something wasn't read.
+    var showsWhatItSees: Bool {
+        didSet { save(showsWhatItSees, Key.showsWhatItSees) }
+    }
+
+    /// Keep a list of the answers given, on this Mac, to look back through.
+    var keepsHistory: Bool {
+        didSet { save(keepsHistory, Key.keepsHistory) }
+    }
+
     /// Whether macOS has shown its Screen Recording prompt; it only ever does once.
     var askedForScreenRecording: Bool {
         didSet { save(askedForScreenRecording, Key.askedForScreenRecording) }
@@ -109,6 +122,8 @@ final class Preferences {
             Key.angles: AngleUnit.degrees.rawValue,
             Key.useAppleIntelligence: true,
             Key.windowTranslucency: 0.55,
+            Key.showsWhatItSees: false,
+            Key.keepsHistory: true,
         ])
         isEnabled = defaults.bool(forKey: Key.isEnabled)
         if let data = defaults.data(forKey: Key.hotkey) {
@@ -125,6 +140,8 @@ final class Preferences {
         angles = AngleUnit(rawValue: defaults.string(forKey: Key.angles) ?? "") ?? .degrees
         useAppleIntelligence = defaults.bool(forKey: Key.useAppleIntelligence)
         windowTranslucency = Self.translucencyRange.clamp(defaults.double(forKey: Key.windowTranslucency))
+        showsWhatItSees = defaults.bool(forKey: Key.showsWhatItSees)
+        keepsHistory = defaults.bool(forKey: Key.keepsHistory)
     }
 
     /// A README clip (`-demo <scene>`) changes settings on screen, but never saves them.

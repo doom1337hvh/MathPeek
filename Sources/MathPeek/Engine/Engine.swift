@@ -3,13 +3,18 @@ import Foundation
 /// Works problems out exactly, with the working a teacher would show.
 enum Engine {
     static func solve(_ problem: Problem, angles: AngleUnit) -> Solution? {
-        MathSettings.$angles.withValue(problem.angles ?? angles) {
+        let worked: Solution? = MathSettings.$angles.withValue(problem.angles ?? angles) {
             switch problem.kind {
             case .evaluate(let expr): evaluate(expr, problem)
             case .simplify(let expr): simplify(expr, problem)
             case .expand(let expr): expand(expr, problem)
             case .factorise(let expr): factorise(expr, problem)
             case .substitute(let expr, let values): substitute(expr, values, problem)
+            case .remainder(let expr, let modulus): Modular.remainder(expr, modulus: modulus, problem)
+            case .sequence(let terms): Sequences.nthTerm(terms, problem)
+            case .diagram(let diagram, let find): diagram.solutions.first { $0.problem.text == find }
+            case .worded(let question, let answers):
+                Solution(problem: problem, question: MathLine(.symbol(question)), task: "Work out", answers: answers, approximation: nil, steps: [])
             case .solve(let equations, let unknowns): Solver.solve(equations, unknowns: unknowns, problem)
             case .differentiate(let expr, let variable, let order):
                 MathSettings.$angles.withValue(.radians) { Calculus.differentiate(expr, variable, order: order, problem) }
@@ -17,6 +22,15 @@ enum Engine {
                 MathSettings.$angles.withValue(.radians) { Calculus.integrate(expr, variable, from: from, to: to, problem) }
             }
         }
+        guard var solution = worked else { return nil }
+        if !problem.lead.isEmpty { solution.steps = problem.lead + solution.steps }
+        if problem.wantsTermNumber {
+            // A term's number counts from 1: other solutions of the equation aren't terms.
+            let terms = solution.answers.filter { ($0.parts.last?.number?.rational).map { $0.isInteger && $0.numerator > 0 } ?? false }
+            solution.answers = terms
+            solution.note = terms.isEmpty ? "It isn't a term of the sequence: n would have to be a positive whole number." : nil
+        }
+        return solution
     }
 
     // MARK: Arithmetic
@@ -27,6 +41,25 @@ enum Engine {
             let (answer, approximation) = presentNumber(fractions.result, decimals: false)
             return Solution(problem: problem, question: MathLine(expr), task: "Work out", answers: [MathLine(answer)],
                             approximation: approximation, steps: fractions.steps)
+        }
+        // Square roots multiplied, divided, in brackets or under a fraction: kept exact, with
+        // the roots combined and nothing irrational left on the bottom.
+        if !problem.usesDecimals, let worked = Surds.worked(expr) {
+            let (answer, approximation) = presentNumber(worked.answer, decimals: false)
+            var note: String?
+            if let written = problem.writtenAnswer, let expected = written.evaluate(), let actual = worked.answer.evaluate() {
+                note = abs(expected - actual) < 1e-9 * max(1, abs(actual))
+                    ? "It says = \(Format.text(written)): that's right."
+                    : "It says = \(Format.text(written)), but the answer is \(Format.text(answer))."
+            }
+            return Solution(problem: problem, question: MathLine(expr), task: "Work out", answers: [MathLine(answer)], approximation: approximation,
+                            steps: worked.isPlainSum ? (surdSteps(expr) ?? []) : worked.steps, note: note)
+        }
+        // Roots that aren't whole, and powers that are fractions or negative: how each is
+        // done by hand, where order of operations alone would only state the answer.
+        if !problem.usesDecimals, let working = surdSteps(expr) ?? powerSteps(expr) {
+            let (answer, approximation) = presentNumber(Simplify.run(expr), decimals: false)
+            return Solution(problem: problem, question: MathLine(expr), task: "Work out", answers: [MathLine(answer)], approximation: approximation, steps: working)
         }
         let (steps, value) = orderOfOperations(expr, decimals: problem.usesDecimals)
         guard let value else {
@@ -42,6 +75,107 @@ enum Engine {
         }
         return Solution(problem: problem, question: MathLine(expr), task: "Work out", answers: [MathLine(answer)],
                         approximation: approximation, steps: steps.count > 1 ? steps : [], note: note)
+    }
+
+    /// The largest whole number whose square divides `value`, and what's left.
+    private static func squareFactor(of value: Int) -> (outside: Int, inside: Int) {
+        var outside = 1, inside = value
+        var factor = 2
+        while factor * factor <= inside {
+            while inside % (factor * factor) == 0 {
+                inside /= factor * factor
+                outside *= factor
+            }
+            factor += 1
+        }
+        return (outside, inside)
+    }
+
+    private static func swapping(_ expr: Expr, _ old: Expr, for new: Expr) -> Expr {
+        if expr == old { return new }
+        switch expr {
+        case .add(let parts): return .add(parts.map { swapping($0, old, for: new) })
+        case .multiply(let parts): return .multiply(parts.map { swapping($0, old, for: new) })
+        case .power(let base, let exponent): return .power(swapping(base, old, for: new), swapping(exponent, old, for: new))
+        case .function(let function, let argument): return .function(function, swapping(argument, old, for: new))
+        default: return expr
+        }
+    }
+
+    /// Square roots added, taken away or multiplied by whole numbers: √44 + √99 + √275. Each
+    /// root has its square factor taken out, then roots of the same number are collected.
+    private static func surdSteps(_ expr: Expr) -> [Step]? {
+        var roots: [Int] = []
+        var isPlain = true
+        func look(_ expr: Expr) {
+            switch expr {
+            case .number(let value): if value.rational == nil { isPlain = false }
+            case .power(.number(let under), let exponent) where exponent == .half:
+                if let whole = under.integer, whole > 1 { if !roots.contains(whole) { roots.append(whole) } } else { isPlain = false }
+            case .add(let parts), .multiply(let parts): parts.forEach(look)
+            default: isPlain = false
+            }
+        }
+        look(expr)
+        guard isPlain, !roots.isEmpty else { return nil }
+        var lines: [MathLine] = []
+        var rewritten = expr
+        for under in roots {
+            let (outside, inside) = squareFactor(of: under)
+            guard outside > 1 else { continue }
+            let root = Expr.power(.integer(under), .half)
+            let simple: Expr = inside == 1 ? .integer(outside) : .multiply([.integer(outside), .power(.integer(inside), .half)])
+            if inside == 1 {
+                lines.append(MathLine(root, simple))
+            } else {
+                lines.append(MathLine(parts: [root, .power(.multiply([.integer(outside * outside), .integer(inside)]), .half), simple]))
+            }
+            rewritten = swapping(rewritten, root, for: simple)
+        }
+        let value = Simplify.run(expr)
+        guard !lines.isEmpty || roots.count > 1 else { return nil }
+        var steps: [Step] = []
+        if !lines.isEmpty {
+            steps.append(Step("Take the square number out of each root", "Write what's under the root as a square number times what's left: the root of the square number is whole.", lines))
+        }
+        if Format.text(rewritten) != Format.text(value) {
+            steps.append(Step("Collect the roots that are the same", "Roots of the same number add up like letters do: 2√11 + 3√11 is 5√11.", [MathLine(rewritten, value)]))
+        }
+        return steps.isEmpty ? nil : steps
+    }
+
+    /// A number to a negative power or a fraction power: 27^(2/3), (9/16)^(−3/2).
+    private static func powerSteps(_ expr: Expr) -> [Step]? {
+        guard case .power(let base, let exponent) = expr, let under = Simplify.run(base).number?.rational, under.numerator > 0,
+              let index = exponent.number?.rational ?? Simplify.run(exponent).number?.rational, !index.isInteger || index.numerator < 0,
+              under != Rational(1) else { return nil }
+        var steps: [Step] = []
+        var current = under, power = index
+        func number(_ value: Rational) -> Expr { .number(.exact(value)) }
+        /// A power as it's written, minus sign and all (the usual way of writing 8⁻¹ is 1/8, which is the answer).
+        func written(_ base: Rational, _ index: Rational) -> Expr {
+            .power(number(base), .symbol((index.numerator < 0 ? "−" : "") + "\(abs(index.numerator))" + (index.isInteger ? "" : "/\(index.denominator)")))
+        }
+        if power.numerator < 0, let flipped = Rational(1) / current {
+            let positive = power.negated
+            steps.append(Step("A negative power turns the number upside down", "A number to a negative power is 1 over it to the positive power.",
+                              [MathLine(written(current, power), positive == Rational(1) ? number(flipped) : written(flipped, positive))]))
+            current = flipped
+            power = positive
+        }
+        if power.denominator > 1 {
+            guard let top = Rational.exactRoot(current.numerator, power.denominator), let bottom = Rational.exactRoot(current.denominator, power.denominator),
+                  let root = Rational.make(top, bottom) else { return steps.isEmpty ? nil : steps }
+            let name = power.denominator == 2 ? "square root" : (power.denominator == 3 ? "cube root" : "\(power.denominator)th root")
+            steps.append(Step("The bottom of the power is a root", "Take the \(name) first.",
+                              [MathLine(.power(number(current), .fraction(1, power.denominator)), number(root))]))
+            current = root
+            power = Rational(power.numerator)
+        }
+        if power != Rational(1), let value = current.power(power.numerator) {
+            steps.append(Step("Then the power", "", [MathLine(.power(number(current), number(power)), number(value))]))
+        }
+        return steps.isEmpty ? nil : steps
     }
 
     /// Why a sum has no answer.
@@ -297,6 +431,8 @@ enum Engine {
     }
 
     static func expand(_ expr: Expr, _ problem: Problem) -> Solution? {
+        // Brackets of numbers and roots are a sum to work out.
+        if expr.symbols.isEmpty, !problem.usesDecimals, Surds.worked(expr) != nil { return evaluate(expr, problem) }
         var steps: [Step] = []
         let uncollected = expandedUncollected(expr)
         let result = Simplify.expand(expr)
@@ -314,6 +450,26 @@ enum Engine {
     }
 
     static func factorise(_ expr: Expr, _ problem: Problem) -> Solution? {
+        // Terms alike written out apart, 3x − 22x + 7, are a power lost in the reading
+        // (3x² − 22x + 7): nobody asks for that to be factorised, and its answer would be to
+        // another question.
+        func terms(_ expr: Expr) -> [Expr] {
+            if case .add(let parts) = expr { return parts.flatMap(terms) }
+            return [expr]
+        }
+        if terms(expr).count > terms(Simplify.run(expr)).count { return nil }
+        // A big number squared beside letters, as in 100a² − 816², is a letter that was read
+        // as a digit (b as 6): an answer to that would be to a different question.
+        func hasSquaredNumber(_ expr: Expr) -> Bool {
+            switch expr {
+            case .power(.number(let base), .number(let exponent)): return (base.integer ?? 0) >= 10 && (exponent.integer ?? 0) >= 2
+            case .add(let parts), .multiply(let parts): return parts.contains(where: hasSquaredNumber)
+            case .power(let base, let exponent): return hasSquaredNumber(base) || hasSquaredNumber(exponent)
+            case .function(_, let argument): return hasSquaredNumber(argument)
+            default: return false
+            }
+        }
+        if !expr.symbols.isEmpty, hasSquaredNumber(expr) { return nil }
         let expanded = Simplify.expand(expr)
         var steps: [Step] = []
         let (common, rest) = commonFactor(expanded)
@@ -329,6 +485,16 @@ enum Engine {
             steps += polySteps
             factors += linear
             if !(remaining.degree == 0 && remaining.coefficient(0) == Rational(1)) { factors.append(remaining.expr) }
+        } else if case .add(let terms) = rest, terms.count == 2,
+                  let squares = [(terms[0], terms[1]), (terms[1], terms[0])].lazy.compactMap({ pair -> (Expr, Expr)? in
+                      // One square take away another, with more than one letter between them: 100a² − 81b².
+                      guard let first = squareRoot(of: pair.0), let second = squareRoot(of: Simplify.run(-pair.1)) else { return nil }
+                      return (first, second)
+                  }).first {
+            let sum = Expr.add([squares.0, squares.1]), difference = Expr.add([squares.0, .multiply([.minusOne, squares.1])])
+            steps.append(Step("Difference of two squares", "a² − b² = (a + b)(a − b), with a = \(Format.text(squares.0)) and b = \(Format.text(squares.1)).",
+                              [MathLine(.multiply(factors + [sum, difference]))]))
+            factors += [sum, difference]
         } else {
             factors.append(rest)
         }
@@ -339,6 +505,21 @@ enum Engine {
                         steps: steps, plot: plot(of: [("y", expanded)]))
     }
 
+    /// The square root of a term like 100a² or 81b²y⁴, where it's whole numbers and whole powers.
+    private static func squareRoot(of term: Expr) -> Expr? {
+        let (coefficient, letters) = Simplify.splitCoefficient(term)
+        guard let value = coefficient.rational, value.numerator > 0, let top = Rational.exactRoot(value.numerator, 2),
+              let bottom = Rational.exactRoot(value.denominator, 2), let number = Rational.make(top, bottom) else { return nil }
+        var parts: [Expr] = number == Rational(1) ? [] : [.number(.exact(number))]
+        let factors: [Expr]
+        if case .multiply(let all) = letters { factors = all } else if letters.isOne { factors = [] } else { factors = [letters] }
+        for factor in factors {
+            guard case .power(let base, let exponent) = factor, case .symbol = base, let power = exponent.number?.integer, power > 0, power % 2 == 0 else { return nil }
+            parts.append(power == 2 ? base : .power(base, .integer(power / 2)))
+        }
+        return parts.isEmpty ? .one : (parts.count == 1 ? parts[0] : .multiply(parts))
+    }
+
     /// The largest number and power of each letter that divides every term: 6x² + 9x = 3x(2x + 3).
     static func commonFactor(_ expr: Expr) -> (Expr, Expr) {
         let terms: [Expr] = if case .add(let parts) = expr { parts } else { [expr] }
@@ -346,7 +527,8 @@ enum Engine {
         var numeric: Int?
         var lowest: [String: Int]?
         for term in terms {
-            let (coefficient, rest) = Simplify.splitCoefficient(term)
+            var (coefficient, rest) = Simplify.splitCoefficient(term)
+            if case .number(let value) = term { (coefficient, rest) = (value, .one) }
             guard let n = coefficient.integer else { return (.one, expr) }
             numeric = numeric.map { Rational.gcd($0, abs(n)) } ?? abs(n)
             var powers: [String: Int] = [:]

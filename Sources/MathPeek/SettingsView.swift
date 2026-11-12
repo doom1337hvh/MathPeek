@@ -91,6 +91,10 @@ struct MainSettings: View {
                 Text("Window transparency")
                 Text("How much of what's behind shows through the working window.")
             }
+            Toggle(isOn: $prefs.keepsHistory) {
+                Text("Keep a history")
+                Text("Every answer, to look back through in the working window. It's kept on this Mac.")
+            }
         }
 
         Section("Permission") {
@@ -104,6 +108,13 @@ struct MainSettings: View {
             } label: {
                 Text("Screen Recording")
                 Text("To see the text in the area it reads, only when you press the shortcut. It's read on this Mac and never saved.")
+            }
+        }
+
+        Section("Debug") {
+            Toggle(isOn: $prefs.showsWhatItSees) {
+                Text("Show what it sees")
+                Text("When you press the shortcut, draws a box on every character it makes out, an outline on each line it read and any diagram, and says why a sum was left out. Point at a line to see how it was read.")
             }
         }
     }

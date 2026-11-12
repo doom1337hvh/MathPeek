@@ -4,21 +4,35 @@ import Foundation
 struct MathLine: Sendable, Hashable {
     var parts: [Expr]
     var relation: String = "="
+    /// Words after the maths: "(mod 13)".
+    var suffix: String?
 
-    init(_ parts: Expr..., relation: String = "=") {
+    init(_ parts: Expr..., relation: String = "=", suffix: String? = nil) {
         self.parts = parts
         self.relation = relation
+        self.suffix = suffix
     }
 
-    init(parts: [Expr], relation: String = "=") {
+    init(parts: [Expr], relation: String = "=", suffix: String? = nil) {
         self.parts = parts
         self.relation = relation
+        self.suffix = suffix
     }
 
-    var text: String { parts.map(Format.text).joined(separator: " \(relation) ") }
+    var text: String {
+        // A degree sign goes straight after the number.
+        parts.map(Format.text).joined(separator: " \(relation) ") + (suffix.map { $0 == "°" ? $0 : " " + $0 } ?? "")
+    }
+
     var latex: String {
-        let relation = relation == "≈" ? "\\approx" : (relation == "≠" ? "\\neq" : relation)
-        return parts.map(Format.latex).joined(separator: " \(relation) ")
+        let relation = relation == "≈" ? "\\approx" : (relation == "≠" ? "\\neq" : (relation == "≡" ? "\\equiv" : relation))
+        var ending = ""
+        if let suffix {
+            // "(mod 13)" has its own command.
+            let modulus = suffix.filter(\.isNumber)
+            ending = suffix == "°" ? "^\\circ" : (suffix.hasPrefix("(mod") && !modulus.isEmpty ? " \\pmod{\(modulus)}" : " \\text{ \(suffix)}")
+        }
+        return parts.map(Format.latex).joined(separator: " \(relation) ") + ending
     }
 }
 

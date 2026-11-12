@@ -1,47 +1,89 @@
 import AppKit
 
-/// Dims every screen and lets you drag out the area to read, as for a screenshot. A click
-/// without a drag reads around that point; Escape or a right-click cancels. The overlay is a
-/// panel that doesn't activate MathPeek, so the app you were in keeps the focus.
+/// What was chosen while the screen was dimmed.
+enum Picked {
+    /// An area dragged out, in global coordinates.
+    case area(CGRect)
+    /// A click on nothing in particular: read around that point.
+    case point(CGPoint)
+    /// A click on a highlighted problem, by the number it was given.
+    case spot(Int)
+}
+
+/// Dims every screen and lets you drag out the area to read, as for a screenshot. Problems
+/// MathPeek has found on screen are highlighted, and clicking one picks it. A click elsewhere
+/// reads around that point; Escape or a right-click cancels. The overlay is a panel that
+/// doesn't activate MathPeek, so the app you were in keeps the focus.
 @MainActor
 final class AreaPicker {
     private var windows: [PickerPanel] = []
-    private var completion: ((CGRect?) -> Void)?
+    private var completion: ((Picked?) -> Void)?
 
     var isPicking: Bool { !windows.isEmpty }
 
-    /// Calls `completion` with the area in global coordinates (zero-sized for a click), or nil
-    /// if it was cancelled.
-    func pick(_ completion: @escaping (CGRect?) -> Void) {
+    /// Calls `completion` with what was picked, or nil if it was cancelled.
+    func pick(_ completion: @escaping (Picked?) -> Void) {
         cancel()
         self.completion = completion
         for screen in NSScreen.screens {
-            let panel = PickerPanel(screen: screen) { [weak self] rect in self?.finish(rect) }
+            let panel = PickerPanel(screen: screen) { [weak self] picked in self?.finish(picked) }
             windows.append(panel)
             panel.orderFrontRegardless()
         }
         let pointer = NSEvent.mouseLocation
         (windows.first { $0.frame.contains(pointer) } ?? windows.first)?.makeKey()
-        NSCursor.crosshair.push()
+        // MathPeek isn't the active app, and macOS only lets the active app change the cursor.
+        BackgroundCursor.allow(true)
+        NSCursor.crosshair.set()
+    }
+
+    /// Highlights problems found on screen: where each is, in global coordinates, and its number.
+    func highlight(_ spots: [(id: Int, rect: CGRect)]) {
+        for panel in windows {
+            let here = spots.filter { panel.frame.contains(CGPoint(x: $0.rect.midX, y: $0.rect.midY)) }
+            panel.add(here.map { ($0.id, $0.rect.offsetBy(dx: -panel.frame.minX, dy: -panel.frame.minY)) })
+        }
     }
 
     func cancel() {
         finish(nil)
     }
 
-    private func finish(_ rect: CGRect?) {
+    private func finish(_ picked: Picked?) {
         guard !windows.isEmpty else { return }
         windows.forEach { $0.orderOut(nil) }
         windows = []
-        NSCursor.pop()
+        NSCursor.arrow.set()
+        BackgroundCursor.allow(false)
         let done = completion
         completion = nil
-        done?(rect)
+        done?(picked)
+    }
+}
+
+/// Lets MathPeek change the cursor while another app is the active one. macOS has no public
+/// way to: an app in the background is ignored when it sets the cursor, and the picker's panel
+/// deliberately leaves the app you're in active. The window server has a setting for it, which
+/// is looked up when it's needed, so if it's ever gone the cursor just stays an arrow.
+enum BackgroundCursor {
+    private typealias Connection = @convention(c) () -> Int32
+    private typealias SetProperty = @convention(c) (Int32, Int32, CFString, CFTypeRef) -> Int32
+
+    static func allow(_ on: Bool) {
+        let anywhere = UnsafeMutableRawPointer(bitPattern: -2)
+        guard let connection = dlsym(anywhere, "CGSMainConnectionID") ?? dlsym(anywhere, "_CGSDefaultConnection"),
+              let setProperty = dlsym(anywhere, "CGSSetConnectionProperty") else { return }
+        let id = unsafeBitCast(connection, to: Connection.self)()
+        let value: CFTypeRef = on ? kCFBooleanTrue : kCFBooleanFalse
+        _ = unsafeBitCast(setProperty, to: SetProperty.self)(id, id, "SetsCursorInBackground" as CFString, value)
     }
 }
 
 private final class PickerPanel: NSPanel {
-    init(screen: NSScreen, onFinish: @escaping (CGRect?) -> Void) {
+    private let picker: PickerView
+
+    init(screen: NSScreen, onFinish: @escaping (Picked?) -> Void) {
+        picker = PickerView(frame: CGRect(origin: .zero, size: screen.frame.size))
         super.init(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered, defer: false)
         setFrame(screen.frame, display: false)
@@ -53,22 +95,35 @@ private final class PickerPanel: NSPanel {
         isReleasedWhenClosed = false
         hidesOnDeactivate = false
         acceptsMouseMovedEvents = true
-        let view = PickerView(frame: CGRect(origin: .zero, size: screen.frame.size))
-        view.onFinish = { [weak self] local in
-            guard let self else { return }
-            onFinish(local.map { $0.offsetBy(dx: self.frame.minX, dy: self.frame.minY) })
+        let origin = screen.frame.origin
+        picker.onFinish = { picked in
+            // The view works in its own coordinates; the rest of the app in global ones.
+            switch picked {
+            case .area(let rect): onFinish(.area(rect.offsetBy(dx: origin.x, dy: origin.y)))
+            case .point(let point): onFinish(.point(CGPoint(x: point.x + origin.x, y: point.y + origin.y)))
+            case .spot, nil: onFinish(picked)
+            }
         }
-        contentView = view
+        contentView = picker
     }
 
     override var canBecomeKey: Bool { true }
+
+    func add(_ spots: [(id: Int, rect: CGRect)]) {
+        picker.add(spots)
+    }
 }
 
 private final class PickerView: NSView {
-    /// The area in this view's coordinates, or nil to cancel.
-    var onFinish: ((CGRect?) -> Void)?
+    /// What was picked, in this view's coordinates, or nil to cancel.
+    var onFinish: ((Picked?) -> Void)?
     private var start: CGPoint?
     private var current: CGPoint?
+    /// Problems found on this screen, and the one under the pointer.
+    private var spots: [(id: Int, rect: CGRect)] = []
+    private var hovered: Int?
+
+    private static let accent = NSColor(srgbRed: 0.04, green: 0.62, blue: 1.0, alpha: 1)
 
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -79,6 +134,49 @@ private final class PickerView: NSView {
                       width: abs(current.x - start.x), height: abs(current.y - start.y))
     }
 
+    func add(_ new: [(id: Int, rect: CGRect)]) {
+        guard !new.isEmpty else { return }
+        // A little room round the text, so the outline doesn't touch it.
+        spots += new.map { ($0.id, $0.rect.insetBy(dx: -5, dy: -4)) }
+        if let window { point(at: convert(window.mouseLocationOutsideOfEventStream, from: nil)) }
+        needsDisplay = true
+    }
+
+    // MARK: The pointer
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.activeAlways, .mouseMoved, .mouseEnteredAndExited, .cursorUpdate, .inVisibleRect],
+                                       owner: self))
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .crosshair)
+    }
+
+    /// The pointer is at `location`: light the problem it's over, and show a hand there.
+    private func point(at location: CGPoint) {
+        let over = start == nil ? spots.last(where: { $0.rect.contains(location) })?.id : nil
+        if over != hovered {
+            hovered = over
+            needsDisplay = true
+        }
+        (hovered == nil ? NSCursor.crosshair : NSCursor.pointingHand).set()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        point(at: convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        point(at: convert(event.locationInWindow, from: nil))
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        point(at: convert(event.locationInWindow, from: nil))
+    }
+
     override func mouseDown(with event: NSEvent) {
         start = convert(event.locationInWindow, from: nil)
         current = start
@@ -87,17 +185,24 @@ private final class PickerView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         current = convert(event.locationInWindow, from: nil)
+        if let selection, selection.width >= 6 || selection.height >= 6, hovered != nil { hovered = nil }
+        NSCursor.crosshair.set()
         needsDisplay = true
     }
 
     override func mouseUp(with event: NSEvent) {
         current = convert(event.locationInWindow, from: nil)
-        guard var area = selection else { return }
-        // A click, not a drag: read around that point.
+        guard let area = selection, let point = current else { return }
+        // A click, not a drag: the problem under it, or else around that point.
         if area.width < 6 && area.height < 6 {
-            area = CGRect(origin: current ?? area.origin, size: .zero)
+            if let spot = spots.last(where: { $0.rect.contains(point) }) {
+                onFinish?(.spot(spot.id))
+            } else {
+                onFinish?(.point(point))
+            }
+        } else {
+            onFinish?(.area(area))
         }
-        onFinish?(area)
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -110,10 +215,28 @@ private final class PickerView: NSView {
         }
     }
 
+    // MARK: Drawing
+
     override func draw(_ dirtyRect: NSRect) {
         NSColor.black.withAlphaComponent(0.22).setFill()
         bounds.fill()
-        if let selection {
+        // Each problem shows through the dimming, with an outline: brighter under the pointer.
+        for spot in spots {
+            let path = NSBezierPath(roundedRect: spot.rect, xRadius: 5, yRadius: 5)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current?.compositingOperation = .copy
+            NSColor.clear.setFill()
+            path.fill()
+            NSGraphicsContext.restoreGraphicsState()
+            let lit = spot.id == hovered && selection.map { $0.width < 6 && $0.height < 6 } ?? true
+            Self.accent.withAlphaComponent(lit ? 0.2 : 0.07).setFill()
+            path.fill()
+            let outline = NSBezierPath(roundedRect: spot.rect.insetBy(dx: 0.75, dy: 0.75), xRadius: 4.5, yRadius: 4.5)
+            outline.lineWidth = lit ? 2 : 1.5
+            Self.accent.withAlphaComponent(lit ? 1 : 0.75).setStroke()
+            outline.stroke()
+        }
+        if let selection, selection.width >= 6 || selection.height >= 6 {
             NSColor.clear.setFill()
             selection.fill(using: .copy)
             NSColor.controlAccentColor.withAlphaComponent(0.08).setFill()
@@ -122,7 +245,7 @@ private final class PickerView: NSView {
             outline.lineWidth = 1
             NSColor.white.setStroke()
             outline.stroke()
-        } else {
+        } else if start == nil {
             drawHint()
         }
     }

@@ -98,7 +98,8 @@ enum Solver {
             moves.append(describe(left.coefficient(0), times: nil, side: "from"))
         }
         let ax = Simplify.multiply([a, .symbol(x)])
-        let minusB = Simplify.run(-b)
+        // With letters in it, the brackets are multiplied out: C − B rather than −(B − C).
+        let minusB = b.symbols.isEmpty ? Simplify.run(-b) : Simplify.expand(Simplify.run(-b))
         steps.append(Step(moves.isEmpty ? "Collect the \(x) terms" : moves.joined(separator: ", and ").capitalizedFirst,
                           "Get the \(x) terms on one side and the rest on the other.", [MathLine(ax, minusB)]))
         let value = Simplify.run(minusB / a)
@@ -148,6 +149,27 @@ enum Solver {
                 steps.append(Step("Set each bracket to zero", "If a product is zero, one of its factors is zero.",
                                   factors.filter { $0.contains(x) }.map { MathLine($0, .zero) }))
                 return (values, steps, roots.count == 1 ? "This is a repeated root." : nil, false)
+            }
+        }
+        // No x term: x² on its own, then the square root of both sides.
+        if b.isZero {
+            let square = Simplify.expand(Simplify.run(-c / a))
+            if !square.symbols.isEmpty || (square.evaluate() ?? -1) > 0 {
+                // (With letters under it the root stays in one piece: √(2s/a), not √2√s/√a.)
+                func hasRoot(_ expr: Expr) -> Bool {
+                    switch expr {
+                    case .add(let parts), .multiply(let parts): return parts.contains(where: hasRoot)
+                    case .power(let base, let exponent): return exponent.number?.rational?.isInteger == false || hasRoot(base)
+                    default: return false
+                    }
+                }
+                let split = Simplify.power(square, .half)
+                let isWhole = square.symbols.isEmpty || !hasRoot(split)
+                let root = isWhole ? split : Expr.power(Simplify.run(Simplify.together(square)), .half)
+                steps.append(Step("Get \(x)² on its own", "", [MathLine(Simplify.power(variable, .two), square)]))
+                steps.append(Step("Take the square root of both sides", "A square root can be positive or negative.",
+                                  [MathLine(variable, root), MathLine(variable, isWhole ? Simplify.run(-root) : -root)]))
+                return (isWhole ? sortedValues([root, Simplify.run(-root)]) : [root, -root], steps, nil, false)
             }
         }
         // The quadratic formula.
@@ -419,12 +441,24 @@ enum Solver {
             solution.question = labelled.first!
             return solution
         }
+        // Linear, but elimination got nowhere: they contradict each other, or say the same thing.
+        if let rows = linearRows(equations, unknowns), rows.count == unknowns.count {
+            let contradictory = rank(rows.map { Array($0.dropLast()) }) < rank(rows)
+            let line: (String, String) = contradictory
+                ? ("The equations contradict each other", "No values can make them all true, so there's no solution.")
+                : ("The equations say the same thing", "One can be made from the others, so there isn't one answer: every point on the line works.")
+            steps.append(Step("Compare the equations", line.0 + "."))
+            var solution = Solution(problem: problem, question: labelled.first!, task: "Solve the simultaneous equations",
+                                    answers: [], steps: steps, note: line.0 + ". " + line.1)
+            solution.answerSets = []
+            return solution
+        }
         // Not linear: rearrange one for a letter and substitute.
         for (index, equation) in equations.enumerated() {
             for variable in unknowns {
                 guard let form = PolynomialForm(Simplify.run(equation.left - equation.right), in: variable), form.degree == 1,
                       let coefficient = Optional(form.coefficient(1)), coefficient.symbols.isEmpty else { continue }
-                let expression = Simplify.run(-form.coefficient(0) / coefficient)
+                let expression = Simplify.expand(Simplify.run(-form.coefficient(0) / coefficient))
                 steps.append(Step("Rearrange (\(index + 1)) for \(variable)", "", [MathLine(.symbol(variable), expression)]))
                 let others = equations.enumerated().filter { $0.offset != index }.map { $0.element }
                 let substituted = others.map { Equation(left: Simplify.run($0.left.substituting(variable, with: expression)),
@@ -456,6 +490,48 @@ enum Solver {
 
     private static func order(_ name: String) -> Int {
         ["x": 0, "y": 1, "z": 2][name] ?? 3 + Int(name.unicodeScalars.first?.value ?? 0)
+    }
+
+    /// The equations as rows of numbers, the coefficients then the right-hand side, if every one
+    /// is linear.
+    private static func linearRows(_ equations: [Equation], _ unknowns: [String]) -> [[Rational]]? {
+        var matrix: [[Rational]] = []
+        for equation in equations {
+            let f = Simplify.expand(equation.left - equation.right)
+            var row: [Rational] = []
+            var rest = f
+            for variable in unknowns {
+                guard let form = PolynomialForm(rest, in: variable), form.degree <= 1 else { return nil }
+                guard case .number(.exact(let c)) = Simplify.run(form.coefficient(1)) else {
+                    if form.coefficient(1).isZero { row.append(Rational(0)); rest = form.coefficient(0); continue }
+                    return nil
+                }
+                row.append(c)
+                rest = form.coefficient(0)
+            }
+            guard case .number(.exact(let constant)) = Simplify.run(rest) else { return nil }
+            row.append(constant.negated)
+            matrix.append(row)
+        }
+        return matrix
+    }
+
+    /// How many of the rows are independent.
+    private static func rank(_ rows: [[Rational]]) -> Int {
+        var m = rows
+        var rank = 0
+        let columns = m.first?.count ?? 0
+        for column in 0..<columns {
+            guard let pivot = (rank..<m.count).first(where: { !m[$0][column].isZero }) else { continue }
+            m.swapAt(rank, pivot)
+            for row in 0..<m.count where row != rank && !m[row][column].isZero {
+                guard let factor = m[row][column] / m[rank][column] else { continue }
+                m[row] = zip(m[row], m[rank]).map { a, b in (b * factor).flatMap { a - $0 } ?? a }
+            }
+            rank += 1
+            if rank == m.count { break }
+        }
+        return rank
     }
 
     /// Elimination, with exact fractions. Two unknowns are shown the way it's taught.
@@ -503,10 +579,18 @@ enum Solver {
                                   "Multiply (1) by \(Format.number(.exact(q))) and (2) by \(Format.number(.exact(p))).",
                                   [line(top), line(bottom)]))
             }
-            let same = top[target] == bottom[target]
-            let combined: [Rational] = zip(top, bottom).compactMap { same ? $0 - $1 : $0 + $1 }
-            guard combined.count == 3, !combined[keep].isZero else { return nil }
-            steps.append(Step((same ? "Subtract" : "Add") + " the equations", "This eliminates \(unknowns[target]).", [line(combined)]))
+            let combined: [Rational]
+            if p.isZero || q.isZero {
+                // One of them has no such letter in it already: there's nothing to eliminate.
+                combined = p.isZero ? top : bottom
+                guard !combined[keep].isZero else { return nil }
+                steps.append(Step("Start with (\(p.isZero ? 1 : 2))", "It has no \(unknowns[target]) in it.", [line(combined)]))
+            } else {
+                let same = top[target] == bottom[target]
+                combined = zip(top, bottom).compactMap { same ? $0 - $1 : $0 + $1 }
+                guard combined.count == 3, !combined[keep].isZero else { return nil }
+                steps.append(Step((same ? "Subtract" : "Add") + " the equations", "This eliminates \(unknowns[target]).", [line(combined)]))
+            }
             guard let keepValue = combined[2] / combined[keep] else { return nil }
             steps.append(Step("Solve for \(unknowns[keep])", "", [MathLine(.symbol(unknowns[keep]), .number(.exact(keepValue)))]))
             // Back into (1), or (2) if (1) has no target term.
