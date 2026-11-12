@@ -590,11 +590,6 @@ enum Asked {
         // The question the pointer is in, and its parts: (a), (b).
         // Pointing at one part asks for that part; pointing at the question asks for them all.
         let layout = layout(rows, pointer: pointer, across: across)
-        if ProcessInfo.processInfo.environment["ASKED_DEBUG"] != nil {
-            for (i, r) in rows.enumerated() { print("   row \(i) h=\(Int(r.height)) l=\(Int(r.left)) \(r.text)") }
-            print("   pointer \(Int(pointer)) across \(across.map { Int($0) } ?? -1) layout \(layout)")
-            for f in found { print("   found row \(f.row): \(f.solution.problem.text) => \(f.solution.answerText)") }
-        }
         let stem = layout.stem
         let stemText = stem.filter { !layout.labels.contains($0) }.map { unheaded(rows[$0].text) }.joined(separator: " ")
         let considered = layout.pointed.isEmpty ? layout.parts : layout.pointed

@@ -149,7 +149,9 @@ final class AnswerBubble {
         let size = CGSize(width: ceil(fitting.width), height: ceil(fitting.height))
         let gap: CGFloat = 14
         let screen = NSScreen.screens.first { $0.frame.contains(anchor) } ?? NSScreen.main
-        let visible = screen?.visibleFrame ?? CGRect(origin: .zero, size: CGSize(width: 10_000, height: 10_000))
+        // A README clip's bubble keeps to its stage, which is on no screen.
+        let visible = DemoStage.isFilming ? DemoStage.frame
+            : screen?.visibleFrame ?? CGRect(origin: .zero, size: CGSize(width: 10_000, height: 10_000))
         var origin = CGPoint(x: anchor.x + gap, y: anchor.y - gap - size.height)
         if origin.x + size.width > visible.maxX { origin.x = anchor.x - gap - size.width }
         if origin.y < visible.minY { origin.y = anchor.y + gap }
@@ -179,6 +181,7 @@ final class AnswerBubble {
         surface.onClick = { [weak self] in self?.clicked() }
         surface.onHover = { [weak self] inside in self?.hovered(inside) }
         panel.contentView = surface
+        if DemoStage.isFilming { DemoStage.withoutGlass(panel) }
 
         self.panel = panel
         self.hosting = hosting
@@ -195,6 +198,19 @@ final class AnswerBubble {
         } else {
             hide()
         }
+    }
+
+    /// Where the bubble is while it shows, for a README clip's pointer to find it.
+    var demoFrame: CGRect? {
+        guard let panel, panel.isVisible, panel.alphaValue > 0 else { return nil }
+        return panel.frame
+    }
+
+    /// A README clip's pointer is drawn by the recording: this says where it is, as the real
+    /// pointer coming onto the bubble and leaving it would.
+    func demoPointer(_ point: CGPoint) {
+        let inside = demoFrame?.contains(point) ?? false
+        if inside != isHovered { hovered(inside) }
     }
 
     /// Redraws the bubble for what it's showing now.

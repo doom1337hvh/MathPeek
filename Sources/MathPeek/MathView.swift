@@ -234,7 +234,8 @@ struct MathRender {
                 .padding(.horizontal, -size * 0.14).padding(.vertical, -size * 0.08))
             .contentShape(Rectangle())
             .onHover { touch.hover(id, $0) }
-            .onTapGesture { touch.pick(part) })
+            .onTapGesture { touch.pick(part) }
+            .demoPlace(id))
     }
 
     private func number(_ value: Number, _ size: CGFloat, _ origin: Origin?) -> AnyView {
@@ -265,7 +266,8 @@ struct MathRender {
             }
             .contentShape(Rectangle())
             .onHover { touch.hover(id, $0) }
-            .onTapGesture { change(spot) })
+            .onTapGesture { change(spot) }
+            .demoPlace(id))
     }
 
     // MARK: Drawing

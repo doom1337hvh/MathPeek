@@ -90,6 +90,13 @@ final class MathReader {
         }
     }
 
+    /// What a read found, handed over by a README clip instead of read from the screen: the
+    /// bubble and the working it opens are the same ones (see DemoScene).
+    func showDemo(_ reading: Reading, at anchor: CGPoint) {
+        task?.cancel()
+        show(reading, at: anchor)
+    }
+
     func stop() {
         picker.cancel()
         scan?.cancel()

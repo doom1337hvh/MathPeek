@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var learn = LearnWindow(prefs: prefs, history: history)
     private lazy var reader = MathReader(prefs: prefs, access: access, bubble: bubble)
     private lazy var recorder = ShortcutRecorder(prefs: prefs, hotkeys: hotkeys)
+    private lazy var director = DemoDirector(prefs: prefs, reader: reader, bubble: bubble, learn: learn, history: history)
     private lazy var menuBar: MenuBar = MenuBar(symbol: "plus.forwardslash.minus", items: { [weak self] menu in
         guard let self else { return }
         menu.addItem(NSMenuItem("Turn On MathPeek", isOn: prefs.isEnabled) { [weak self] in
@@ -68,15 +69,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         bubble.onCopyAvailable = { [weak self] available in
-            self?.hotkeys.set(available ? .copy : nil, for: .copyAnswer)
+            // A README clip leaves ⌘C to whoever is using the Mac.
+            self?.hotkeys.set(available && !DemoStage.isFilming ? .copy : nil, for: .copyAnswer)
         }
         learn.showSettings = { [weak self] in self?.settings.show() }
         settings.onResignedKey = { [weak self] in self?.recorder.stop() }
         settings.onClose = { [weak self] in self?.recorder.stop() }
-        menuBar.install()
+        // A README clip is recorded off the screen, without a second icon in the menu bar.
+        if !DemoStage.isFilming { menuBar.install() }
         update()
 
-        if let scene = AppShell.demoScene {
+        if let scene = DemoScene.current {
+            director.run(scene)
+        } else if let scene = AppShell.demoScene {
             showDemoScene(scene)
             // A running demo can be told to change scene, so clips are recorded in one go.
             let name = Notification.Name((Bundle.main.bundleIdentifier ?? "MathPeek") + ".demo")
@@ -89,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Ready for the first press: the bubble's window exists (so captures leave it out) and
         // text recognition is loaded, which can take many seconds the first time.
         bubble.preload()
-        let canCapture = access.isAllowed
+        let canCapture = access.isAllowed && !DemoStage.isFilming
         Task.detached(priority: .utility) {
             await ScreenReader.warmUp(canCapture: canCapture)
         }
@@ -181,7 +186,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func update() {
         menuBar.appearsDisabled = !prefs.isEnabled
-        hotkeys.set(prefs.isEnabled ? prefs.hotkey : nil, for: .read)
+        // A README clip presses the shortcut itself; the real one stays with the copy in use.
+        hotkeys.set(prefs.isEnabled && !DemoStage.isFilming ? prefs.hotkey : nil, for: .read)
         if !prefs.isEnabled { reader.stop() }
     }
 }

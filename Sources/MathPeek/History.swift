@@ -146,6 +146,12 @@ final class History {
         return text
     }
 
+    /// Made-up answers for a README clip, in place of the real ones. Never saved.
+    func showDemo(_ entries: [Entry]) {
+        guard DemoStage.isFilming else { return }
+        self.entries = entries
+    }
+
     // MARK: The file
 
     private var file: URL? {
@@ -155,6 +161,8 @@ final class History {
     }
 
     private func load() {
+        // A README clip has made-up answers of its own.
+        guard !DemoStage.isFilming else { return }
         guard let file, let data = try? Data(contentsOf: file),
               let saved = try? JSONDecoder().decode([Entry].self, from: data) else { return }
         entries = saved

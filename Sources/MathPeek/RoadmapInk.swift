@@ -61,6 +61,16 @@ enum InkTool: CaseIterable, Hashable {
         }
     }
 
+    /// The key that picks it.
+    var key: String {
+        switch self {
+        case .move: "m"
+        case .pen: "p"
+        case .highlighter: "h"
+        case .text: "t"
+        case .eraser: "e"
+        }
+    }
 }
 
 /// The pointer over the roadmap shows the tool: a hand to move, a cross to write or rub out,
@@ -277,7 +287,7 @@ struct InkToolbar: View {
                     .contentShape(Rectangle())
                     .onTapGesture { model.choose(tool: tool) }
                     .hoverID(id, in: model)
-                    .help(tool.name)
+                    .help("\(tool.name) (\(tool.key.uppercased()))")
             }
             divider
             ForEach(InkColor.allCases, id: \.self) { color in
@@ -288,10 +298,11 @@ struct InkToolbar: View {
                     .frame(width: 22, height: 26)
                     .contentShape(Rectangle())
                     .onTapGesture { model.choose(color: color) }
-                    .help(color.name)
+                    .help("\(color.name) (\((InkColor.allCases.firstIndex(of: color) ?? 0) + 1))")
             }
             divider
             key("Undo", id: "ink.undo", enabled: !model.inkHistory.isEmpty) { model.undoInk() }
+                .help("Undo (⌘Z). Redo is ⇧⌘Z")
             key("Clear", id: "ink.clear", enabled: !model.marks.isEmpty) { model.clearInk() }
         }
         .padding(.horizontal, 2)

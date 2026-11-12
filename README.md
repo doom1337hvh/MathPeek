@@ -9,11 +9,9 @@
   Free, open source, and light on battery.
 </p>
 
-<!-- TODO: once there are clips (scripts/make-video.swift), put the main one here:
 <p align="center">
-  <img src="docs/demo.gif" width="820" alt="MathPeek in action: …">
+  <img src="docs/demo.gif" width="820" alt="MathPeek in action: pointing at x² − 5x + 6 = 0 on a worksheet, pressing ⌃⌥=, the answer x = 2, x = 3 appearing by the pointer, then clicking it to open the working as a roadmap, opening the Factorise step and writing it out with Visualise">
 </p>
--->
 
 <p align="center">
   <a href="https://github.com/doom1337hvh/MathPeek/releases/latest"><b>Download</b></a> ·
@@ -26,8 +24,26 @@ MathPeek is a small menu bar app for the maths you come across on screen: in a w
 
 ## Features
 
-- **Works anywhere on screen:** web pages, PDFs, documents, images and screenshots. It reads what's on screen with macOS's own text recognition, so it doesn't matter which app the sum is in.
-- **The answer by the pointer:** a small bubble shows the sum it read and its answer, then fades away. It stays while the pointer is on it. Click it, or press ⌘C, to copy the answer.
+- **Works anywhere on screen:** web pages, PDFs, documents, screenshots and photos. It reads the screen with macOS's own text recognition, so it doesn't matter which app the maths is in.
+- **The answer by the pointer:** a small bubble shows what it read and the answer. Click it for the working, or press ⌘C to copy.
+- **Exact answers:** 7/12, 2√3, ln 5/2, with decimals and rounding when you want them.
+- **Arithmetic to calculus:** fractions, percentages, surds, algebra, equations, simultaneous equations, sequences, derivatives and integrals.
+- **The working as a roadmap:** every step is a stop on a line from the problem to its answers. Open a step to see what was done and why.
+- **Visualise a step:** the step written out as you would on paper, with what changes marked.
+- **Try it yourself:** write your own working and have each line checked as you write it.
+- **Diagrams:** circle theorems, triangles and angles in figures, read from the drawing itself.
+- **Questions in words:** many exam-style questions are worked from their wording. Where MathPeek can't be sure, it shows nothing rather than a guess.
+- **Practice and history:** another problem like the one you're on, other methods to the same answer, and every answer kept to look back at.
+- **Private:** it never connects to the internet. Everything is read and worked out on your Mac.
+- **Built for battery life:** no Dock icon and nothing running in the background that doesn't need to. See [Battery](#battery).
+
+Everything above can be switched off or changed in Settings.
+
+### In detail
+
+<details>
+<summary><b>What it works out</b></summary>
+
 - **A maths engine, not just a calculator:** exact answers (7/12, 2√3, ln 5/2), with decimals when you want them. It covers:
   - arithmetic with fractions, mixed numbers, powers, roots and percentages (`50 + 10%` is 55, `15% of 80` is 12, `increase 60 by 20%` is 72);
   - algebra: simplifying, expanding brackets, factorising, and adding fractions with letters;
@@ -37,6 +53,14 @@ MathPeek is a small menu bar app for the maths you come across on screen: in a w
   - substitution, like `3x + 2 when x = 4`, and functions, like `f(x) = 3x + 2. Find f(4)`;
   - sequences: the nth term of a list like 3, 7, 11, 15 (linear, quadratic or geometric), a term from its number, and which term has a value;
   - remainders of huge numbers, like `2²⁰²⁶ + 3²⁰²⁶` divided by 13, by finding where the powers' remainders repeat.
+- **Checks written answers:** point at `12 × 7.5 = 91` and it tells you the answer is 90.
+- **Questions in words:** exam-style questions in number, ratio and percentages, algebra, sequences, probability, statistics, graphs, and shapes and measures are worked from their wording, over as many lines as they take, without Apple Intelligence. What the words ask for decides how the answer is given: as a mixed number, to 3 significant figures, in terms of π. It doesn't cover every question, and when it can't be sure of an answer it shows nothing rather than a guess. Other word problems go to Apple Intelligence, which gets some wrong; MathPeek only shows its answer when the maths it wrote comes out as plain numbers, and says what each letter stands for.
+
+</details>
+
+<details>
+<summary><b>The working window</b></summary>
+
 - **The working as a roadmap:** click the answer to open it. The problem is at the top, each step is a stop on the line below it showing where it got to, and the line ends at the answers, branching when there are several, like the three roots of a cubic. Drag it to move around, and pinch (or ⌘ and scroll, or ⌘+ and ⌘−) to zoom.
 - **Open a step where it is:** click a stop, or use ↑ and ↓, and it unfolds: what was done, the maths, why it works and the mistake to watch out for.
 - **Visualise a step:** in an open step, **Visualise** writes the step out as you would on paper: what's done to both sides in blue and what cancels struck through, the part of a sum that's worked out and where its answer goes, like terms put together, brackets multiplied out in a grid, a fraction's top and bottom multiplied by the same number, two equations added in columns. **Graph** shows it as curves instead: an equation's sides before and after, crossing at the same answer. Each stays on for every step you open until you hide it.
@@ -48,9 +72,16 @@ MathPeek is a small menu bar app for the maths you come across on screen: in a w
 - **Following a term:** pick a term and every term of its kind lights up through the working (3x lights 2x and 5x), to follow it as it moves and combines.
 - **Click the maths:** click a term or a bracket, in the problem or in a step, to see what it is. The same thing lights up wherever else it appears.
 - **Change a number:** pick a term in the problem and its numbers are underlined. Click one and type another (↑ and ↓ go up and down by one, Return puts it in). The whole roadmap is worked out again.
-- **Try it yourself:** **Try It Yourself** takes MathPeek's steps away and you write your own working at the stops on the roadmap, a line at a time. Each line is checked as you write it: a right one fills its circle blue and the line runs down to it, a wrong one turns red and says what it gives instead. Stuck, **Hint** names the next step, and **Write It In** writes its line for you. Reaching the answer shows it; **Show Everything** brings back MathPeek's working to compare. Problems that aren't an equation to check (a circle diagram, differentiating) ask for each thing a step works out instead: type it in the box where it goes, Return checks it, and the next one is asked for; **Hint** gives the step's rule, then **Write It In** fills it. Keys under the line type powers, roots, π, × and ÷ and degrees, and the toolbar in the corner writes on the roadmap itself, for rough working next to the steps: pen, highlighter, text (click where it goes), an eraser that rubs out whatever it passes over, and Move for dragging the roadmap about, in white, blue, red or yellow, with **Undo** and **Clear**. Scrolling always moves the roadmap, and the writing moves and zooms with it.
+- **Try it yourself:** **Try It Yourself** takes MathPeek's steps away and you write your own working at the stops on the roadmap, a line at a time. Each line is checked as you write it: a right one fills its circle blue and the line runs down to it, a wrong one turns red and says what it gives instead. Stuck, **Hint** names the next step, and **Write It In** writes its line for you. Reaching the answer shows it; **Show Everything** brings back MathPeek's working to compare. Problems that aren't an equation to check (a circle diagram, differentiating) ask for each thing a step works out instead: type it in the box where it goes, Return checks it, and the next one is asked for; **Hint** gives the step's rule, then **Write It In** fills it. Keys under the line type powers, roots, π, × and ÷ and degrees, and the toolbar in the corner writes on the roadmap itself, for rough working next to the steps: pen, highlighter, text (click where it goes), an eraser that rubs out whatever it passes over, and Move for dragging the roadmap about, in white, blue, red or yellow, with **Undo** and **Clear**. ⌘Z or ⌃Z undoes and ⇧⌘Z or ⌃Y redoes (in a box you're typing in, they undo the typing first), M, P, H, T and E pick the tools and 1 to 4 the colours. Scrolling always moves the roadmap, and the writing moves and zooms with it.
 - **Check every answer:** click an answer to see it put back into the question. Under the answers the graph shows where each one is, the one picked in yellow, and the **Graph** tab has it too. You can copy the answer, the whole working, or LaTeX.
-- **Several problems at once:** every separate problem in the area is found and solved. The bubble lists them all, and the working window gives each its own tab. Equations that belong together, with the same unknowns, are solved as simultaneous equations.
+- **Change it and try again:** edit the problem in the working window, or choose **Type a Problem…** from the menu.
+- **Nothing on screen to read:** open MathPeek again while it's running (Spotlight, Finder, Launchpad) and the working window opens as you left it, or with a field to type a problem if there's been none yet.
+
+</details>
+
+<details>
+<summary><b>Diagrams</b></summary>
+
 - **Diagrams:** point at a circle-theorem diagram or a triangle and MathPeek reads the drawing itself: the circle, the lines, the points, and which angle or side each number is written by. It then works out what follows, one fact at a time, with the reason for each:
   - Circle theorems: the angle at the centre, angles in the same segment, the angle in a semicircle, cyclic quadrilaterals, a tangent and a radius, the alternate segment theorem, tangents from a point, and the triangles and quadrilaterals inside (radii make isosceles triangles).
   - Triangles: Pythagoras, the sine, cosine and tangent ratios, the sine rule and the cosine rule, for a side or for an angle.
@@ -59,32 +90,62 @@ MathPeek is a small menu bar app for the maths you come across on screen: in a w
   - It reads the question's words beside a circle diagram too, since exam questions put most of it there: "Angle ABD = 54°", "BC = CD", "PA and PB are tangents", "BOD is a diameter", "Work out the size of angle ACD". The angle asked for comes first.
   - The diagram is drawn again in the working: at the top of the roadmap with what's asked for in blue, and in each step you open with the angles and sides that step works from picked out and the one it finds in blue.
   - Click any other angle in that diagram, or a line when lengths are written on it, and MathPeek works that out instead, in a tab of its own. What's written on the diagram is already known, so it can't be picked.
-- **Change it and try again:** edit the problem in the working window, or choose **Type a Problem…** from the menu.
-- **Nothing on screen to read:** open MathPeek again while it's running (Spotlight, Finder, Launchpad) and the working window opens as you left it, or with a field to type a problem if there's been none yet.
-- **Checks written answers:** point at `12 × 7.5 = 91` and it tells you the answer is 90.
+
+</details>
+
+<details>
+<summary><b>Reading the screen</b></summary>
+
+- **Works anywhere on screen:** web pages, PDFs, documents, images and screenshots. It reads what's on screen with macOS's own text recognition, so it doesn't matter which app the sum is in.
+- **The answer by the pointer:** a small bubble shows the sum it read and its answer, then fades away. It stays while the pointer is on it. Click it, or press ⌘C, to copy the answer.
+- **Several problems at once:** every separate problem in the area is found and solved. The bubble lists them all, and the working window gives each its own tab. Equations that belong together, with the same unknowns, are solved as simultaneous equations.
 - **Reads maths laid out on the page:** a fraction with one thing over another, or a root with a bar over what it's the root of. Text recognition reads lines, so MathPeek finds the bars in the picture, sets each piece down again along one line, and reads that. Apple Intelligence on your Mac can help with what's left and with word problems; it only turns them into maths, MathPeek's engine works out the answer, and anything it writes that isn't on the screen is thrown away. See [Permissions](#permissions). A fraction in tall brackets with a power after it, `(9/16)` to the `−3/2`, is read the same way, and so is a fraction none of whose parts text recognition saw at all, like the `2/5` among the choices of an exam question. A whole number in front of a fraction is a mixed number (`1 2/3`, not 12 over 3), and a root in the top or bottom of a fraction, `3` over `5√x`, is read as a root. A root sign printed with no bar after it (`√3 × √5`, as worksheets print surds) is known by its shape, in a line or inside a fraction.
 - **The right problem:** when there are several, it picks the one nearest the pointer, skips plain numbers, and copes with what text recognition gets wrong (× read as x, ∫ as J, √ as V).
 - **Powers and bars from the picture:** text recognition can't tell that a power is raised. It reads 2²⁰²⁶ as 22026, x² as x or x', and the bars of |x − 3| as letters. MathPeek finds each character's ink in the picture, sees which sit higher, and reads those again on their own. It knows a slash by its shape too: text recognition often drops the slash after a power, `(x + 3)²/2`, or reads it as a 1. A per cent sign that's read as an 8 is known by its two rings, and ⩾ or ⩽ read as > or < by the extra line under the sign. A times sign read as the letter x between numbers or roots is known by standing clear of the line the digits sit on. If a power can't be read, or there's ink that no character accounts for, it says it can't read that clearly rather than answer a different question.
-- **Questions in words:** some kinds are read as they stand, over as many lines as they take, without Apple Intelligence: remainders ("What is the remainder when 2²⁰²⁶ + 3²⁰²⁶ is divided by 13?") and sequences ("The nth term of a sequence is an² + bn. The 2nd term is 2. The 5th term is 35. Find a and b."). Other word problems go to Apple Intelligence, which gets some wrong; MathPeek only shows its answer when the maths it wrote comes out as plain numbers, and says what each letter stands for.
 - **You choose what it reads:** an area around the pointer, sized in Settings, or an area you drag out each time, like a screenshot. **Read an Area…** in the menu does that too.
 - **Click a highlight:** while you choose an area the pointer becomes a crosshair, and the problems MathPeek is sure of are highlighted, each outline on its own text. Click one for its answer, or drag as before. Sure means read twice: each problem is read again on its own, enlarged, and has to come out the same, with its powers borne out by the ink. Text too small to make out, and anything that didn't read the same twice, is left alone. So is one number with a dash and another in the middle of a sentence when it could be a range, a pair of years, opening hours, a score or a phone number; `718 − 114`, a bigger number less a smaller one, is taken as a sum.
 - **Your own shortcut:** ⌃⌥= to start with; record any other in Settings.
-- **Built for battery life:** no Dock icon and nothing running in the background that doesn't need to. See [Battery](#battery).
 
-Everything above can be switched off or changed in Settings.
+</details>
 
 ## In action
 
 Click one to watch it.
 
-Clips are coming.
-
-<!-- One <details> per clip in docs/clips:
 <details>
-<summary><b>Scene name</b>: what it shows.</summary>
-<p align="center"><img src="docs/clips/scene.gif" width="820" alt="…"></p>
+<summary><b>The answer by the pointer</b>: sums, a percentage and fractions, and a written answer that's wrong.</summary>
+<p align="center"><img src="docs/clips/bubble.gif" width="820" alt="Pointing at four sums on a worksheet in turn: 12 × (3 + 4.5) gives 90, a written 12 × 7.5 = 91 is corrected to 90, 15% of 80 gives 12, and 3/4 + 5/6 gives 19/12"></p>
 </details>
--->
+
+<details>
+<summary><b>Several problems at once</b>: the bubble lists every problem it found, and each gets its own tab.</summary>
+<p align="center"><img src="docs/clips/several.gif" width="820" alt="Four problems read together: the bubble lists each with its answer, the nearest one highlighted, and the working window opens with a tab for each"></p>
+</details>
+
+<details>
+<summary><b>The roadmap</b>: each step is a stop on the line, which branches to a cubic's three roots. A quadratic can be worked another way.</summary>
+<p align="center"><img src="docs/clips/roadmap.gif" width="820" alt="The working of x³ − 6x² + 11x − 6 = 0 as a roadmap: opening the factor theorem step, the line branching to x = 1, x = 2 and x = 3, checking x = 2, then a quadratic worked by the formula and by completing the square"></p>
+</details>
+
+<details>
+<summary><b>Try It Yourself</b>: write your own working a line at a time. Each line is checked as you write it.</summary>
+<p align="center"><img src="docs/clips/try.gif" width="820" alt="Try It Yourself on 3x + 5 = 20: the line 3x = 25 turns red and says what it gives, corrected to 3x = 15 it is ticked, and x = 5 reaches the answer"></p>
+</details>
+
+<details>
+<summary><b>Diagrams</b>: a circle-theorem diagram is read from the drawing and worked out, with the diagram drawn again in the working.</summary>
+<p align="center"><img src="docs/clips/diagram.gif" width="820" alt="Pointing at a circle diagram with 126° at the centre and x at the circumference: the bubble shows x = 63°, and the working redraws the diagram and gives the angle at the centre theorem"></p>
+</details>
+
+<details>
+<summary><b>Change a number</b>: click a number in the problem, type another, and the whole roadmap is worked out again. Another Like This gives a new one to try.</summary>
+<p align="center"><img src="docs/clips/change.gif" width="820" alt="Changing the 8 in x² − 6x + 8 = 0 to 5: the steps and answers rework to x = 1 and x = 5, then Another Like This opens a new quadratic ready to try"></p>
+</details>
+
+<details>
+<summary><b>History</b>: every answer is kept by day. Type to search it, and click one to open its working again.</summary>
+<p align="center"><img src="docs/clips/history.gif" width="820" alt="The history list with today's and yesterday's answers, searching for fractions, and opening 3/4 + 5/6 again"></p>
+</details>
 
 ## Requirements
 
@@ -140,7 +201,7 @@ Open Settings from the menu bar icon, or with the gear at the top right of the w
 - **Area** (Around the pointer):
   - **Around the pointer** reads the sum nearest the pointer within **Width** × **Height**, 700 × 200 points to start with. While you change them, an outline of the area follows the pointer.
   - **An area I drag out** dims the screen when you press the shortcut and highlights the problems it finds. Click a highlight, drag over the sum, or click anywhere else to read around that point. Escape, a right-click or the shortcut again cancels.
-- **Angles** (Degrees): for sin, cos and tan. A ° or π in the problem decides for it, and calculus always uses radians.
+- **Angles** (Degrees): for sin, cos and tan. A ° or π in the problem decides for it, and calculus always uses radians. An angle found as an answer is shown in this measure, with the other beside it.
 - **Use Apple Intelligence** (on, where available): read word problems, and maths MathPeek can't make out itself, with Apple's on-device model.
 - **Keep it on screen for** (5 seconds): how long the answer stays, unless the pointer is on it. Click it for the working; ⌘C copies the answer.
 - **Window transparency** (55 %): how much of what's behind shows through the working window. 0 % is solid.

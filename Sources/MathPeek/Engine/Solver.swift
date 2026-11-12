@@ -64,9 +64,20 @@ enum Solver {
             }
         }
         if !approximate, let check = checkStep(equation, x, answers) { steps.append(check) }
-        let lines = answers.map { MathLine(.symbol(x), $0, relation: approximate ? "≈" : "=") }
+        // An angle found in degrees says so, with the same angle in the other measure beside it.
+        let isAngle = note?.contains("between 0") == true
+        let inDegrees = isAngle && note?.contains("°") == true
+        let lines = answers.map { MathLine(.symbol(x), $0, relation: approximate ? "≈" : "=", suffix: inDegrees && $0.symbols.isEmpty ? "°" : nil) }
         var approximation: String?
-        if !approximate {
+        if isAngle {
+            let both = answers.compactMap { value -> String? in
+                guard let v = value.evaluate() else { return nil }
+                let degrees = inDegrees ? v : v * 180 / .pi, radians = inDegrees ? v * .pi / 180 : v
+                func short(_ number: Double, _ places: Double) -> String { Format.decimal((number * places).rounded() / places) }
+                return inDegrees ? "\(short(degrees, 100))° is \(short(radians, 10000)) rad" : "\(short(radians, 10000)) rad is \(short(degrees, 100))°"
+            }
+            if !both.isEmpty { approximation = both.joined(separator: ", ") }
+        } else if !approximate {
             let decimals = answers.compactMap { value -> String? in
                 guard value.number?.rational?.isInteger != true, value.symbols.isEmpty, let v = value.evaluate() else { return nil }
                 return "\(x) ≈ " + Format.decimal(v)
@@ -317,13 +328,38 @@ enum Solver {
             let f = Simplify.run(equation.left - equation.right)
             let degrees = MathSettings.angles == .degrees
             let range = degrees ? 0.0...360.0 : 0.0...(2 * Double.pi)
+            // The cosine rule, cos A = (b² + c² − a²)/(2bc), is about an angle of a triangle: under half a turn.
+            if isCosineRule(equation, x) {
+                let half = degrees ? 180.0 : Double.pi
+                let inside = roots(of: f, x, in: 0.0...half).filter { $0 > 1e-9 && $0 < half - 1e-9 }.map { exactAngle($0) }
+                if inside.count == 1 {
+                    return (inside, steps, degrees ? "An angle of a triangle, between 0° and 180°." : "An angle of a triangle, between 0 and π.", false)
+                }
+            }
             let values = roots(of: f, x, in: range).filter { $0 < range.upperBound - 1e-9 }.map { exactAngle($0) }
             steps.append(Step("Find every solution from " + (degrees ? "0° to 360°" : "0 to 2π"),
                               "Sine and cosine repeat every 360°, so there are usually two solutions in one turn.",
-                              values.map { MathLine(.symbol(x), $0) }))
+                              values.map { MathLine(.symbol(x), $0, suffix: degrees ? "°" : nil) }))
             return (values, steps, degrees ? "Solutions between 0° and 360°." : "Solutions between 0 and 2π.", false)
         }
         return (sortedValues(branches.map(Simplify.run)), steps, nil, false)
+    }
+
+    /// cos x = a sum of three squares over a product, as the cosine rule is written.
+    private static func isCosineRule(_ equation: Equation, _ x: String) -> Bool {
+        let sides = [equation.left, equation.right]
+        guard let other = sides.first(where: { !$0.contains(x) }), sides.contains(.function(.cos, .symbol(x))), other.symbols.isEmpty else { return false }
+        func squares(_ expr: Expr) -> Int {
+            switch expr {
+            case .power(let base, let exponent):
+                if exponent == .two, base.number != nil { return 1 }
+                return exponent == .minusOne ? 0 : squares(base)
+            case .add(let parts): return parts.map(squares).reduce(0, +)
+            case .multiply(let parts): return parts.map(squares).reduce(0, +)
+            default: return 0
+            }
+        }
+        return squares(other) == 3
     }
 
     /// log base `base` of `value`, exactly when it's whole: log₂ 8 = 3.

@@ -135,6 +135,8 @@ final class LearnModel {
     var marks: [InkMark] = []
     var drawing: InkMark?
     var inkHistory: [[InkMark]] = []
+    /// What Undo took away, for Redo. Writing anything new empties it.
+    var inkFuture: [[InkMark]] = []
     var inkTool: InkTool = .pen
     var inkColor: InkColor = .white
     /// The text being typed on the roadmap.
@@ -494,6 +496,7 @@ final class LearnModel {
         myLines = [""]
         marks = []
         inkHistory = []
+        inkFuture = []
         drawing = nil
         editingNote = nil
         selectedAnswer = 0
@@ -868,12 +871,47 @@ final class LearnModel {
     private func saveInk() {
         inkHistory.append(marks)
         if inkHistory.count > 200 { inkHistory.removeFirst() }
+        inkFuture = []
     }
 
     func undoInk() {
         finishNote()
         guard let last = inkHistory.popLast() else { return }
+        inkFuture.append(marks)
         marks = last
+    }
+
+    func redoInk() {
+        finishNote()
+        guard let next = inkFuture.popLast() else { return }
+        inkHistory.append(marks)
+        marks = next
+    }
+
+    /// Keys for writing on the roadmap: ⌘Z (or ⌃Z) undoes, ⇧⌘Z (or ⌃Y) redoes, a letter picks
+    /// a tool and 1 to 4 a colour. While a text box has the keys it keeps letters and numbers,
+    /// and Undo and Redo too while it has typing to undo or redo. True when the key was used.
+    func inkKey(_ key: String, flags: NSEvent.ModifierFlags, typing: Bool, typingCanUndo: Bool, typingCanRedo: Bool) -> Bool {
+        guard tryFirst, tab == .route, !showsHistory else { return false }
+        let flags = flags.intersection([.command, .shift, .option, .control])
+        let undo = (flags == .command || flags == .control) && key == "z"
+        let redo = ((flags == [.command, .shift] || flags == [.control, .shift]) && key == "z")
+            || (flags == .control && key == "y")
+        if undo || redo {
+            if typing && (undo ? typingCanUndo : typingCanRedo) { return false }
+            if undo { undoInk() } else { redoInk() }
+            return true
+        }
+        guard flags.isEmpty, !typing else { return false }
+        if let tool = InkTool.allCases.first(where: { $0.key == key }) {
+            choose(tool: tool)
+            return true
+        }
+        if let number = Int(key), InkColor.allCases.indices.contains(number - 1) {
+            choose(color: InkColor.allCases[number - 1])
+            return true
+        }
+        return false
     }
 
     func clearInk() {
@@ -1023,6 +1061,7 @@ final class LearnWindow {
     private var window: NSWindow?
     private var model: LearnModel?
     private var monitor: Any?
+    private var keys: Any?
     /// Clicks in other apps, watched only while the window is open.
     private var clicksElsewhere: Any?
     /// Opens behind the other windows, without becoming the active app: for looking at the
@@ -1086,9 +1125,11 @@ final class LearnWindow {
         model.history = history
         model.shortcut = prefs.hotkey?.display
         model.openEntry = { [weak self] entry in self?.open(entry) ?? false }
-        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1080, height: 760),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
-                              backing: .buffered, defer: false)
+        let style: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        let frame = CGRect(x: 0, y: 0, width: 1080, height: 760)
+        // For a README clip, a window that stays off the screen (see DemoStage).
+        let window = DemoStage.isFilming ? DemoWindow(contentRect: frame, styleMask: style, backing: .buffered, defer: false)
+            : NSWindow(contentRect: frame, styleMask: style, backing: .buffered, defer: false)
         window.title = "MathPeek"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
@@ -1115,10 +1156,11 @@ final class LearnWindow {
         model.close = { [weak window] in window?.close() }
         model.showSettings = { [weak self] in self?.showSettings?() }
         window.center()
-        window.setFrameAutosaveName("MathPeekWindow")
+        if !DemoStage.isFilming { window.setFrameAutosaveName("MathPeekWindow") }
         self.window = window
         self.model = model
         watchScrolling(in: window)
+        watchKeys(in: window)
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.stopWatchingClicksElsewhere() }
         }
@@ -1171,6 +1213,12 @@ final class LearnWindow {
         if let zoom { model.zoom = zoom }
     }
 
+    /// The window and what it shows, for a README clip to act on.
+    var demo: (window: NSWindow, model: LearnModel)? {
+        guard let window, let model else { return nil }
+        return (window, model)
+    }
+
     /// Opens a step, or closes the one open, as a click would: for filming the roadmap.
     func openStop(_ index: Int?) {
         guard let model else { return }
@@ -1209,7 +1257,35 @@ final class LearnWindow {
         }
     }
 
+    /// Undo, Redo and the tool keys for writing on the roadmap. Taken from the window's events
+    /// so ⌃Z works as well as ⌘Z, and so a text box keeps ⌘Z while it has typing to undo.
+    private func watchKeys(in window: NSWindow) {
+        let number = window.windowNumber
+        keys = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.windowNumber == number, let key = event.charactersIgnoringModifiers?.lowercased() else { return event }
+            let flags = event.modifierFlags
+            let handled = MainActor.assumeIsolated { () -> Bool in
+                guard let self, let model = self.model else { return false }
+                let editor = self.window?.firstResponder as? NSTextView
+                let undoer = editor?.undoManager
+                // In a text box ⌃Z does what ⌘Z does there.
+                if let undoer, flags.intersection([.command, .shift, .option, .control]) == .control,
+                   key == "z", undoer.canUndo {
+                    undoer.undo()
+                    return true
+                }
+                return model.inkKey(key, flags: flags, typing: editor != nil,
+                                    typingCanUndo: undoer?.canUndo ?? false, typingCanRedo: undoer?.canRedo ?? false)
+            }
+            return handled ? nil : event
+        }
+    }
+
     private func bringForward(_ window: NSWindow) {
+        if DemoStage.isFilming {
+            DemoStage.show(window)
+            return
+        }
         if opensBehind {
             window.orderBack(nil)
             return
@@ -1343,6 +1419,7 @@ extension View {
         onHover { inside in
             if inside { model.hovered = id } else if model.hovered == id { model.hovered = nil }
         }
+        .demoPlace(id)
     }
 }
 
