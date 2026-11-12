@@ -314,6 +314,7 @@ let scenes: [Scene] = [
         sheet.number(2, y: 228, size: 28)
         sheet.maths("2x^2 + 5x − 3 = 0", x: Sheet.left, y: 228, size: 28)
     },
+    Scene(name: "explore", gifFPS: 15) { quadratics($0, first: "2x^2 + 3x = x + 7", second: "3x^2 − x = 2x + 5") },
     Scene(name: "draw", gifFPS: 15) { linear($0) },
     Scene(name: "try") { linear($0) },
     Scene(name: "diagram") { sheet in

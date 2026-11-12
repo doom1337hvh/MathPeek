@@ -29,6 +29,9 @@ enum DemoScene: String {
     case tryIt = "try"
     /// Working written by hand on the roadmap: the pen, the eraser, the highlighter, a typed note.
     case draw
+    /// Poking at the working: a term picked and followed, an answer checked and rounded,
+    /// the roadmap zoomed and moved.
+    case explore
     /// A circle-theorem diagram read from a picture and worked out.
     case diagram
     /// Changing a number in the problem, and Another Like This.
@@ -259,6 +262,7 @@ final class DemoDirector {
         // Some scenes start with the working already open.
         switch scene {
         case .tryIt: open(["3x + 5 = 20"])
+        case .explore: open(["2x^2 + 3x = x + 7"])
         case .draw:
             open(["3x + 5 = 20"])
             learn.demo?.model.setTryFirst(true)
@@ -280,6 +284,7 @@ final class DemoDirector {
             case .roadmap: await roadmap()
             case .tryIt: await tryIt()
             case .draw: await draw()
+            case .explore: await explore()
             case .diagram: await diagram()
             case .change: await change()
             case .history: await pastAnswers()
@@ -408,6 +413,37 @@ final class DemoDirector {
         await pause(0.3)
         await command(#selector(NSResponder.insertNewline(_:)))
         await moveAside()
+    }
+
+    /// The working isn't a printout: a term clicked says what it is and lights every term of
+    /// its kind, a step opened shows them moving, an answer clicked is put back into the
+    /// question and marked on the graph, and it can be rounded, zoomed and dragged about.
+    private func explore() async {
+        // The second term from the left in the problem: 3x.
+        let terms = DemoStage.places.filter { $0.key.hasPrefix("problem.0/") }.sorted { $0.value.minX < $1.value.minX }
+        guard terms.count >= 2 else {
+            missing.append("the problem's terms")
+            return
+        }
+        await click(terms[1].key)
+        await pause(1.6)
+        await click("stop.0")
+        await pause(1.9)
+        // Two fingers up the trackpad, to the answers.
+        if let model = learn.demo?.model, let answer = DemoStage.places["answer.1"] {
+            await scroll(by: min(0, model.canvasFrame.maxY - 190 - answer.maxY), over: 0.7)
+        }
+        await pause(0.3)
+        await click("answer.1")
+        await pause(1.8)
+        await click("round.2 dp")
+        await pause(1.6)
+        await click("zoom.in")
+        await pause(1.0)
+        // The roadmap dragged up by a bare patch of it, to the graph under the answers.
+        let grip = stagePoint(inWindow: CGPoint(x: 806, y: 470))
+        await stroke((0...28).map { CGPoint(x: grip.x - CGFloat($0) * 0.3, y: grip.y - CGFloat($0) * 10) }, speed: 240)
+        await pause(0.6)
     }
 
     private func diagram() async {

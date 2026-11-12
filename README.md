@@ -128,6 +128,11 @@ Click one to watch it.
 </details>
 
 <details>
+<summary><b>Poke at the working</b>: click a term to see what it is and follow it through the steps, click an answer to check it, round it, zoom in and drag the roadmap about.</summary>
+<p align="center"><img src="docs/clips/explore.gif" width="820" alt="Exploring the working of 2x² + 3x = x + 7: clicking 3x explains it as a term in x and lights the like terms, opening the first step shows them combined, clicking an answer puts it back into the question, 2 dp rounds the answers to −2.44 and 1.44, and after zooming in the roadmap is dragged up to the graph with the picked answer marked"></p>
+</details>
+
+<details>
 <summary><b>Try It Yourself</b>: write your own working a line at a time. Each line is checked as you write it.</summary>
 <p align="center"><img src="docs/clips/try.gif" width="820" alt="Try It Yourself on 3x + 5 = 20: the line 3x = 25 turns red and says what it gives, corrected to 3x = 15 it is ticked, and x = 5 reaches the answer"></p>
 </details>
