@@ -298,6 +298,7 @@ struct InkToolbar: View {
                     .frame(width: 22, height: 26)
                     .contentShape(Rectangle())
                     .onTapGesture { model.choose(color: color) }
+                    .demoPlace("color.\(color.name)")
                     .help("\(color.name) (\((InkColor.allCases.firstIndex(of: color) ?? 0) + 1))")
             }
             divider

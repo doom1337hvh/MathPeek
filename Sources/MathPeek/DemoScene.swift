@@ -1,26 +1,34 @@
 import AppKit
+import AppShell
 import SwiftUI
 
-/// The README's clips, recorded by scripts/make-video.swift. Launched with
-/// `-demo <scene> -demoClock <file>`, MathPeek acts out the scene with its real bubble and
-/// working window, on problems written here. Nothing is read from the screen, so it needs no
-/// Screen Recording; the shortcut isn't registered, the menu bar icon isn't shown, and no
-/// history or settings are saved. Its windows open off every display (`DemoStage`), where the
-/// recording finds them, and it never becomes the active app: a copy of MathPeek that's
-/// already running carries on undisturbed.
+/// The README's clips, recorded by scripts/record-clips.sh (AppShell's recorder). Opened with
+/// `-demo <scene>` off screen (`Demo.isOffscreen`), MathPeek acts the scene out with its real
+/// bubble and working window, on problems written here. Nothing is read from the screen, so it
+/// needs no Screen Recording; the shortcut isn't registered, and no history or settings are
+/// saved. Its windows are on AppShell's stage off every screen, where the recorder finds them,
+/// and it never becomes the active app: a copy of MathPeek that's already running carries on
+/// undisturbed.
+///
+/// The recorder draws the page MathPeek is pointed at (a picture from scripts/clip-pages.swift)
+/// and the pointer, along the path in scripts/clips.jsonc. That path is this script's own:
+/// clip-pages.swift rehearses each scene (`-demoRehearse <file>`) and writes down where the
+/// pointer went. Every step here happens at a set time from the scene's start, so the
+/// recording and the rehearsal run alike.
 enum DemoScene: String {
     /// The README's main clip: a quadratic, its answer by the pointer, the roadmap, a step
     /// opened and written out.
     case tour
-    /// Answers by the pointer: a sum, fractions, a percentage, a written answer that's wrong,
-    /// and several problems at once.
+    /// Answers by the pointer: a sum, a written answer that's wrong, a percentage, fractions.
     case bubble
     /// Several problems read at once: the bubble lists them, and each has a tab.
     case several
-    /// Stepping down a cubic's roadmap to its three roots, then a quadratic another way.
+    /// A cubic's roadmap to its three roots, then a quadratic another way.
     case roadmap
     /// Try It Yourself: lines checked as they're written.
     case tryIt = "try"
+    /// Working written by hand on the roadmap: the pen, the eraser, the highlighter, a typed note.
+    case draw
     /// A circle-theorem diagram read from a picture and worked out.
     case diagram
     /// Changing a number in the problem, and Another Like This.
@@ -28,44 +36,42 @@ enum DemoScene: String {
     /// The history: searching it, and opening an answer again.
     case history
 
-    /// The scene being recorded, if one is. (`-demo` on its own, without `-demoClock`, shows a
-    /// still set-up to look at: see `AppDelegate.showDemoScene`.)
-    static let current: DemoScene? = {
-        let defaults = UserDefaults.standard
-        guard defaults.string(forKey: "demoClock") != nil else { return nil }
-        return defaults.string(forKey: "demo").flatMap(DemoScene.init(rawValue:))
-    }()
+    /// The scene being filmed, if one is. (`-demo` on screen shows a still set-up to look at,
+    /// see `AppDelegate.showDemoScene`; AppShell plays the Settings clip itself.)
+    static let current: DemoScene? = DemoStage.isFilming
+        ? UserDefaults.standard.string(forKey: "demo").flatMap(DemoScene.init(rawValue:)) : nil
 }
 
-/// Where a clip is acted out: an area the size of a small screen, off every display. The
-/// recording draws the page MathPeek is pointed at and the pointer; this says where the
-/// pointer is, since the real one is somewhere else, being used.
+/// Where a clip is acted out: the area the recorder films, on AppShell's stage off every
+/// screen. This keeps where the pointer is, since the real one is somewhere else, being used.
 @MainActor
 enum DemoStage {
-    nonisolated static let isFilming = DemoScene.current != nil
+    /// Whether a clip is being filmed off screen (as `Demo.isOffscreen`, for anywhere).
+    nonisolated static let isFilming = UserDefaults.standard.string(forKey: "demo") != nil
+        && UserDefaults.standard.bool(forKey: "demoOffscreen")
 
-    /// The stage in AppKit's coordinates. Its size comes from the recording (`-demoStage 960,640`).
-    static let frame: CGRect = {
-        let size = numbers(UserDefaults.standard.string(forKey: "demoStage") ?? "")
-        return CGRect(x: -6000, y: -6000, width: size.count == 2 ? size[0] : 960, height: size.count == 2 ? size[1] : 640)
-    }()
+    /// What the recorder takes around the window it films, in points.
+    static let margin: CGFloat = 40
+    /// The area filmed, in AppKit's coordinates, once `open()` has put it on the stage.
+    private(set) static var frame = CGRect(x: -12_040, y: -8_644, width: 964, height: 684)
 
-    /// Where the page's problems are, from the stage's top left (`-demoSpots "x,y;x,y"`).
+    /// Where the page's problems are, from the area's top left (`-demoSpots "x,y;x,y"`).
     static let spots: [CGPoint] = (UserDefaults.standard.string(forKey: "demoSpots") ?? "").split(separator: ";").compactMap {
-        let pair = numbers(String($0))
+        let pair = $0.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
         return pair.count == 2 ? CGPoint(x: pair[0], y: pair[1]) : nil
     }
 
-    /// A picture of the page the recording draws, for the one thing that's read from a picture
-    /// rather than handed over as text: a diagram (`-demoPage <png>`).
-    static let page: CGImage? = UserDefaults.standard.string(forKey: "demoPage")
-        .flatMap { NSImage(contentsOfFile: $0)?.cgImage(forProposedRect: nil, context: nil, hints: nil) }
+    /// The picture of the page the recorder draws behind, for the one thing that's read from
+    /// a picture rather than handed over as text: a diagram (`-demoPage`, a path in the
+    /// repository, which the built app is two folders inside).
+    static let page: CGImage? = UserDefaults.standard.string(forKey: "demoPage").flatMap { path in
+        let file = path.hasPrefix("/") ? URL(fileURLWithPath: path)
+            : Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent(path)
+        return NSImage(contentsOf: file)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+    }
 
-    /// The pointer, from the stage's top left.
-    static var pointer = CGPoint(x: frame.width * 0.72, y: frame.height * 0.8)
-    static var isPressed = false
-    /// Whether the shortcut's keys are down.
-    static var keysDown = false
+    /// The pointer, from the area's top left.
+    static var pointer = CGPoint(x: 694, y: 547)
 
     /// Where everything that can be clicked is in the working window, from its top left.
     static var places: [String: CGRect] = [:]
@@ -73,37 +79,81 @@ enum DemoStage {
     /// The pointer in AppKit's coordinates.
     static var global: CGPoint { CGPoint(x: frame.minX + pointer.x, y: frame.maxY - pointer.y) }
 
-    private static func numbers(_ text: String) -> [CGFloat] {
-        text.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }.map { CGFloat($0) }
+    private static var desk: NSWindow?
+    private static var keys: NSWindow?
+
+    /// Sets the stage. The recorder films the biggest window it finds and the margin round it,
+    /// and several scenes start with no window at all, pointing at the page: so an empty,
+    /// see-through window marks the area out, a little bigger than the working window.
+    static func open() {
+        guard desk == nil else { return }
+        let desk = clear(CGSize(width: 884, height: 604))
+        Demo.stage(desk)
+        frame = desk.frame.insetBy(dx: -margin, dy: -margin)
+        self.desk = desk
+
+        // The shortcut's keys, shown at the bottom of the area while it's pressed: the keys
+        // themselves can't be seen in a clip.
+        let caps = KeyCaps(["⌃", "⌥", "="])
+        let keys = clear(caps.frame.size)
+        keys.level = .floating
+        keys.contentView = caps
+        Demo.stage(keys, offset: CGPoint(x: (desk.frame.width - caps.frame.width) / 2, y: desk.frame.height + margin - 26 - caps.frame.height))
+        keys.orderOut(nil)
+        self.keys = keys
+        keepOnEveryDesktop()
+        // Once the recorder has measured the area, in its first moments, the empty window has
+        // done its job: left there, it would be one more big picture to take for every frame.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { desk.orderOut(nil) }
     }
 
-    /// Puts a window in the middle of the stage. A window with a title bar is moved back onto
-    /// a display as it's ordered in, so that happens while it can't be seen, and then it's
-    /// put where it belongs.
+    /// Keeps the app's windows where they are when the person at the Mac changes desktop.
+    /// Windows off the screen slide away with the desktop they were opened on like any others,
+    /// and are gone from the recording once it's another's turn; these stay put, on all of
+    /// them, a full-screen app's included.
+    static func keepOnEveryDesktop() {
+        for window in NSApp.windows { window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle] }
+    }
+
+    private static func clear(_ size: CGSize) -> NSWindow {
+        let window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: .borderless, backing: .buffered, defer: false)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = false
+        window.isReleasedWhenClosed = false
+        return window
+    }
+
+    static func showKeys(_ shown: Bool) {
+        if shown { keys?.orderFrontRegardless() } else { keys?.orderOut(nil) }
+    }
+
+    /// Puts the working window in the middle of the area.
     static func show(_ window: NSWindow) {
         guard !window.isVisible else { return }
+        open()
         withoutGlass(window)
-        let size = CGSize(width: min(880, frame.width), height: min(600, frame.height))
-        let place = CGRect(x: frame.midX - size.width / 2, y: frame.midY - size.height / 2, width: size.width, height: size.height)
-        window.alphaValue = 0
-        window.ignoresMouseEvents = true
-        window.setFrame(place, display: false)
-        window.orderFrontRegardless()
-        window.setFrame(place, display: true)
-        (window as? DemoWindow)?.place = place
-        // Only once it's off the screen for good can it be seen and clicked.
-        guard !NSScreen.screens.contains(where: { $0.frame.intersects(window.frame) }) else { return }
+        window.setContentSize(CGSize(width: 880, height: 600))
+        Demo.stage(window, offset: CGPoint(x: 2, y: 2))
+        // It's off every screen, where only a clip's own clicks reach it.
         window.ignoresMouseEvents = false
-        window.alphaValue = 1
+        keepOnEveryDesktop()
     }
 
-    /// What blurs the screen behind a window is drawn as plain grey off the screen. Without
-    /// it the window is recorded see-through, and the recording blurs the page behind it.
+    /// Off the screen there's nothing behind a window for its material to blur, and it's
+    /// drawn as flat mid-grey. In its place goes the dark grey the material makes of a light
+    /// page, which is what MathPeek is mostly over.
     static func withoutGlass(_ window: NSWindow) {
         guard let content = window.contentView else { return }
         func plain(_ glass: NSVisualEffectView) -> NSView {
             let view = NSView(frame: glass.frame)
             view.autoresizingMask = glass.autoresizingMask
+            view.wantsLayer = true
+            view.layer?.backgroundColor = CGColor(srgbRed: 0.30, green: 0.30, blue: 0.305, alpha: 1)
+            if !window.styleMask.contains(.titled) {
+                view.layer?.cornerRadius = BubbleView.cornerRadius
+                view.layer?.masksToBounds = true
+            }
             for subview in glass.subviews {
                 subview.removeFromSuperview()
                 view.addSubview(subview)
@@ -118,38 +168,35 @@ enum DemoStage {
     }
 }
 
-/// A window that stays where it's put, off the screen, and looks like the one in front:
-/// MathPeek is never the active app during a clip, and the window buttons of an app that
-/// isn't are grey.
+/// The working window while a clip is filmed: AppKit keeps a window with a title bar on a
+/// screen, and this one has to stay on the stage (see `Demo.stage`). It has the keys, as the
+/// window in front would, so what's typed into it shows its caret.
 final class DemoWindow: NSWindow {
-    /// Where it was put on the stage. From then on it can't be moved or brought forward:
-    /// AppKit does both to a window that's clicked, and would put it on a display.
-    var place: CGRect?
-
-    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { place ?? frameRect }
-    override func setFrame(_ frameRect: NSRect, display flag: Bool) { super.setFrame(place ?? frameRect, display: flag) }
-    override func setFrame(_ frameRect: NSRect, display displayFlag: Bool, animate animateFlag: Bool) { super.setFrame(place ?? frameRect, display: displayFlag) }
-    override func setFrameOrigin(_ point: NSPoint) { super.setFrameOrigin(place?.origin ?? point) }
-    override func setFrameTopLeftPoint(_ point: NSPoint) { if place == nil { super.setFrameTopLeftPoint(point) } }
-    override func center() { if place == nil { super.center() } }
-    override func makeKeyAndOrderFront(_ sender: Any?) { if place == nil { super.makeKeyAndOrderFront(sender) } }
-    override func orderFront(_ sender: Any?) { if place == nil { super.orderFront(sender) } }
-    override func orderFrontRegardless() { if place == nil { super.orderFrontRegardless() } }
-    override func order(_ place: NSWindow.OrderingMode, relativeTo otherWin: Int) { if self.place == nil || place == .out { super.order(place, relativeTo: otherWin) } }
-    override func makeKey() { if place == nil { super.makeKey() } }
-    override func makeMain() { if place == nil { super.makeMain() } }
-    override func miniaturize(_ sender: Any?) {}
-    override func zoom(_ sender: Any?) {}
-    override func toggleFullScreen(_ sender: Any?) {}
-
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
     override var isKeyWindow: Bool { true }
-    override var isMainWindow: Bool { true }
-    override var canBecomeKey: Bool { true }
-    @objc(_hasKeyAppearance) func demoHasKeyAppearance() -> Bool { true }
-    @objc(_hasMainAppearance) func demoHasMainAppearance() -> Bool { true }
-    @objc(_hasActiveAppearance) func demoHasActiveAppearance() -> Bool { true }
-    @objc(hasKeyAppearance) func demoKeyAppearance() -> Bool { true }
-    @objc(hasMainAppearance) func demoMainAppearance() -> Bool { true }
+}
+
+/// The shortcut's keys, each on its own cap.
+private final class KeyCaps: NSView {
+    private let caps: [String]
+    private static let side: CGFloat = 40, gap: CGFloat = 7
+
+    init(_ caps: [String]) {
+        self.caps = caps
+        super.init(frame: CGRect(x: 0, y: 0, width: CGFloat(caps.count) * Self.side + CGFloat(caps.count - 1) * Self.gap, height: Self.side))
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func draw(_ dirtyRect: NSRect) {
+        for (index, cap) in caps.enumerated() {
+            let box = CGRect(x: CGFloat(index) * (Self.side + Self.gap), y: 0, width: Self.side, height: Self.side)
+            NSColor(srgbRed: 0.125, green: 0.13, blue: 0.14, alpha: 0.94).setFill()
+            NSBezierPath(roundedRect: box, xRadius: 9, yRadius: 9).fill()
+            let glyph = NSAttributedString(string: cap, attributes: [.font: NSFont.systemFont(ofSize: 19, weight: .medium), .foregroundColor: NSColor.white])
+            glyph.draw(at: CGPoint(x: box.midX - glyph.size().width / 2, y: box.midY - glyph.size().height / 2))
+        }
+    }
 }
 
 /// A picture handed to another thread to be read. It never changes once made.
@@ -183,11 +230,17 @@ final class DemoDirector {
     private let bubble: AnswerBubble
     private let learn: LearnWindow
     private let history: History
-    private let clock = UserDefaults.standard.string(forKey: "demoClock").map { URL(fileURLWithPath: $0) }
-    /// Where to note what a scene couldn't find, when it's being worked on (`-demoLog <file>`).
-    private let log = UserDefaults.standard.string(forKey: "demoLog")
+    /// When the scene starts, as `CACurrentMediaTime`, and how far into it the script has got.
     private var start = 0.0
-    private var isDone = false
+    private var time = 0.0
+    /// Where the pointer has been (seconds into the scene, and points from the stage's top
+    /// left) and when it clicked, and what a scene meant to click and couldn't find: written
+    /// down for clips.jsonc when the scene is rehearsed.
+    private var path: [(time: Double, point: CGPoint)] = []
+    private var clicks: [Double] = []
+    /// When its button was held down, drawing: from and to.
+    private var drags: [[Double]] = []
+    private var missing: [String] = []
     private var eventNumber = 0
     private var firstClickViews: Set<ObjectIdentifier> = []
     /// What the pointer was last sent to, lit as the real pointer would light it.
@@ -202,38 +255,50 @@ final class DemoDirector {
     }
 
     func run(_ scene: DemoScene) {
-        // Never the active app: the keys stay with whoever is using the Mac.
-        NSApp.setActivationPolicy(.prohibited)
+        DemoStage.open()
+        // Some scenes start with the working already open.
+        switch scene {
+        case .tryIt: open(["3x + 5 = 20"])
+        case .draw:
+            open(["3x + 5 = 20"])
+            learn.demo?.model.setTryFirst(true)
+        case .change: open(["x^2 - 6x + 8 = 0"])
+        case .history:
+            history.showDemo(pastEntries())
+            open(["x^2 - 5x + 6 = 0"])
+        default: break
+        }
+        start = CACurrentMediaTime() + Demo.lead
+        Demo.started(at: start)
+        path = [(-1, DemoStage.pointer)]
         Task {
-            // Text recognition and the first window take a moment the first time.
-            try? await Task.sleep(for: .seconds(0.6))
-            // Some scenes start with the working already open.
-            switch scene {
-            case .tryIt: open(["3x + 5 = 20"])
-            case .change: open(["x^2 - 6x + 8 = 0"])
-            case .history:
-                history.showDemo(pastEntries())
-                open(["x^2 - 5x + 6 = 0"])
-            default: break
-            }
-            if learn.demo != nil { try? await Task.sleep(for: .seconds(0.8)) }
-            start = CACurrentMediaTime()
-            publish()
-            await pause(0.8)
+            await pause(0.3)
             switch scene {
             case .tour: await tour()
             case .bubble: await bubbles()
             case .several: await several()
             case .roadmap: await roadmap()
             case .tryIt: await tryIt()
+            case .draw: await draw()
             case .diagram: await diagram()
             case .change: await change()
             case .history: await pastAnswers()
             }
-            await pause(1.4)
-            isDone = true
-            publish()
+            await pause(1.2)
+            rehearsed()
         }
+    }
+
+    /// After a rehearsal (`-demoRehearse <file>`): how long the scene took and where its
+    /// pointer went, as the recorder measures it, from the stage's top left inside its margin.
+    private func rehearsed() {
+        guard let file = UserDefaults.standard.string(forKey: "demoRehearse") else { return }
+        let notes: [String: Any] = [
+            "length": time,
+            "pointer": path.map { [$0.time, Double($0.point.x - DemoStage.margin), Double($0.point.y - DemoStage.margin)] },
+            "clicks": clicks, "drags": drags, "missing": missing,
+        ]
+        try? JSONSerialization.data(withJSONObject: notes).write(to: URL(fileURLWithPath: file), options: .atomic)
     }
 
     // MARK: The scenes
@@ -312,17 +377,49 @@ final class DemoDirector {
         await pause(1.2)
     }
 
+    /// Working it out by hand on the roadmap, under the line to type in: two lines with the
+    /// pen, a slip rubbed out and put right, the answer highlighted, and a typed note.
+    private func draw() async {
+        await click("tool.Pen", after: 0.15)
+        for line in handwriting("3x = 15", at: CGPoint(x: 196, y: 372)) { await stroke(line) }
+        await pause(0.15)
+        let second = handwriting("x = 6", at: CGPoint(x: 222, y: 428))
+        for line in second { await stroke(line) }
+        await pause(0.3)
+        // The 6 is wrong: rubbed out with a scribble across it.
+        await click("tool.Eraser", after: 0.15)
+        if let six = second.last, let left = six.map(\.x).min(), let right = six.map(\.x).max(), let top = six.map(\.y).min(), let bottom = six.map(\.y).max() {
+            await stroke([CGPoint(x: left - 4, y: top + 6), CGPoint(x: right + 4, y: (top + bottom) / 2), CGPoint(x: left - 2, y: bottom - 4)], speed: 200)
+        }
+        await pause(0.2)
+        // A colour picked while rubbing out is for the pen: the 5 goes in in yellow.
+        await click("color.Yellow", after: 0.15)
+        for line in handwriting("5", at: CGPoint(x: 222 + 79, y: 428)) { await stroke(line) }
+        await pause(0.3)
+        await click("tool.Highlighter", after: 0.15)
+        await stroke([stagePoint(inWindow: CGPoint(x: 214, y: 446)), stagePoint(inWindow: CGPoint(x: 290, y: 444)), stagePoint(inWindow: CGPoint(x: 352, y: 447))], speed: 300)
+        await pause(0.3)
+        await click("tool.Text", after: 0.15)
+        await move(to: stagePoint(inWindow: CGPoint(x: 430, y: 392)))
+        await pause(0.2)
+        await click()
+        await pause(0.3)
+        await type("take away 5", each: 0.06)
+        await pause(0.3)
+        await command(#selector(NSResponder.insertNewline(_:)))
+        await moveAside()
+    }
+
     private func diagram() async {
         await move(to: spot(0))
         await pause(0.4)
-        DemoStage.keysDown = true
-        publish()
+        DemoStage.showKeys(true)
         await pause(0.2)
+        // Reading takes a moment, as it does from the screen: the time for it is allowed.
         let reading = await readPage()
+        await pause(0.9)
         reader.showDemo(reading, at: DemoStage.global)
-        await pause(0.5)
-        DemoStage.keysDown = false
-        publish()
+        DemoStage.showKeys(false)
         await pause(1.6)
         await clickBubble()
         await pause(1.8)
@@ -339,7 +436,7 @@ final class DemoDirector {
         await click(term.key)
         await pause(0.9)
         guard let number = DemoStage.places.first(where: { $0.key.hasPrefix("n:problem.0/0.") && term.value.insetBy(dx: -4, dy: -4).contains($0.value) }) else {
-            note("no number in \(term.key): \(DemoStage.places.keys.filter { $0.hasPrefix("n:") })")
+            missing.append("the number in \(term.key)")
             return
         }
         await click(number.key)
@@ -363,13 +460,9 @@ final class DemoDirector {
             await pause(0.3)
             // A click in a text field follows the mouse until it's let go, which a click made
             // here can't end: the field is given the keys as the click would give them.
-            DemoStage.isPressed = true
-            publish()
-            await pause(0.1)
+            clicks.append(time)
             window.makeFirstResponder(field)
-            DemoStage.isPressed = false
-            publish()
-            await pause(0.4)
+            await pause(0.5)
             await type("frac", each: 0.16)
             await pause(1.2)
         }
@@ -434,8 +527,12 @@ final class DemoDirector {
         DemoStage.spots.indices.contains(index) ? DemoStage.spots[index] : CGPoint(x: DemoStage.frame.width / 2, y: DemoStage.frame.height / 2)
     }
 
+    /// Waits until `seconds` further into the scene. Steps are timed from the scene's start
+    /// rather than from each other, so a step that takes a moment longer doesn't put the rest out.
     private func pause(_ seconds: Double) async {
-        try? await Task.sleep(for: .seconds(seconds))
+        time += seconds
+        let wait = start + time - CACurrentMediaTime()
+        if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
     }
 
     /// The pointer glides to a point on the stage, easing in and out; further takes longer.
@@ -444,29 +541,29 @@ final class DemoDirector {
         let distance = hypot(point.x - from.x, point.y - from.y)
         guard distance > 0.5 else { return }
         let duration = seconds ?? min(max(0.35 + distance / 900, 0.45), 1.0)
-        let began = CACurrentMediaTime()
+        let began = time
+        path += [(began, from), (began + duration, point)]
         while true {
-            let linear = min((CACurrentMediaTime() - began) / duration, 1)
+            let linear = min(max((CACurrentMediaTime() - start - began) / duration, 0), 1)
             let eased = linear * linear * (3 - 2 * linear)
             DemoStage.pointer = CGPoint(x: from.x + (point.x - from.x) * eased, y: from.y + (point.y - from.y) * eased)
             pointerMoved()
             if linear >= 1 { break }
             try? await Task.sleep(for: .milliseconds(12))
         }
+        time = began + duration
     }
 
     /// The shortcut, pressed where the pointer is. What a read of the page would hand on is
     /// handed on from here: each problem as text, worked out by the same engine.
     private func press(_ sums: [String], nearest: Int = 0) async {
-        DemoStage.keysDown = true
-        publish()
+        DemoStage.showKeys(true)
         await pause(0.2)
         let options = ReadOptions(angles: prefs.angles, useModel: false)
         let solutions = sums.compactMap { ScreenReader.worked($0, options) }
         reader.showDemo(solutions.isEmpty ? .noMaths : .solved(solutions, primary: min(nearest, solutions.count - 1)), at: DemoStage.global)
-        await pause(0.5)
-        DemoStage.keysDown = false
-        publish()
+        await pause(0.6)
+        DemoStage.showKeys(false)
     }
 
     /// Moves onto the bubble and clicks it.
@@ -491,54 +588,122 @@ final class DemoDirector {
         return nil
     }
 
-    private func note(_ text: String) {
-        guard let log, let data = (text + "\n").data(using: .utf8) else { return }
-        if let handle = FileHandle(forWritingAtPath: log) {
-            handle.seekToEndOfFile()
-            handle.write(data)
-            try? handle.close()
-        } else {
-            FileManager.default.createFile(atPath: log, contents: data)
-        }
-    }
-
     /// Moves to something in the working window and clicks it.
     private func click(_ id: String, after seconds: Double = 0.35) async {
         guard let point = await place(id) else {
-            let steps = learn.demo?.model.stops.map(\.title).joined(separator: " | ") ?? "no window"
-            note("nothing called \(id). Steps: \(steps). There is: \(DemoStage.places.map { "\($0.key) \(Int($0.value.minX)),\(Int($0.value.minY)) \(Int($0.value.width))x\(Int($0.value.height))" }.sorted().joined(separator: "; "))")
+            missing.append(id)
             return
         }
         target = id
         await move(to: point)
         await pause(seconds)
         // It may have moved while the pointer was on its way.
-        if let now = await place(id, wait: 0.1), hypot(now.x - point.x, now.y - point.y) > 2 { await move(to: now, over: 0.25) }
+        if let now = await place(id, wait: 0.05), hypot(now.x - point.x, now.y - point.y) > 2 { await move(to: now, over: 0.25) }
         await click()
     }
 
     /// A click where the pointer is, on whichever of MathPeek's windows is there.
     private func click() async {
         let point = DemoStage.global
-        let windows = NSApp.windows.filter { $0.isVisible && $0.alphaValue > 0 && $0.frame.contains(point) }
+        let windows = NSApp.windows.filter { $0.isVisible && $0.alphaValue > 0 && !$0.ignoresMouseEvents && $0.frame.contains(point) }
         guard let window = windows.max(by: { ($0.level.rawValue, -$0.orderedIndex) < ($1.level.rawValue, -$1.orderedIndex) }) else { return }
-        DemoStage.isPressed = true
-        publish()
-        await pause(0.08)
         func event(_ type: NSEvent.EventType) -> NSEvent? {
             eventNumber += 1
             return NSEvent.mouseEvent(with: type, location: window.convertPoint(fromScreen: point), modifierFlags: [],
                                       timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
                                       context: nil, eventNumber: eventNumber, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0)
         }
+        clicks.append(time)
         takeFirstClicks(at: point, in: window)
         if let down = event(.leftMouseDown) { window.sendEvent(down) }
         await pause(0.1)
         if let up = event(.leftMouseUp) { window.sendEvent(up) }
-        note("clicked \(target ?? "") in \(window.className) now at \(window.frame), visible \(window.isVisible), alpha \(window.alphaValue), active \(NSApp.isActive)")
         await pause(0.05)
-        DemoStage.isPressed = false
         pointerMoved()
+    }
+
+    /// A point in the working window, from its top left, as a point on the stage.
+    private func stagePoint(inWindow point: CGPoint) -> CGPoint {
+        guard let window = learn.demo?.window else { return point }
+        return CGPoint(x: window.frame.minX - DemoStage.frame.minX + point.x, y: DemoStage.frame.maxY - window.frame.maxY + point.y)
+    }
+
+    /// The pointer pressed, drawn along a line and let go: a pen stroke, or whatever the tool
+    /// picked does with a drag. The points are on the stage.
+    private func stroke(_ points: [CGPoint], speed: CGFloat = 285) async {
+        guard let first = points.first else { return }
+        let hop = hypot(first.x - DemoStage.pointer.x, first.y - DemoStage.pointer.y)
+        await move(to: first, over: hop < 80 ? 0.12 : nil)
+        await pause(0.05)
+        let windows = NSApp.windows.filter { $0.isVisible && $0.alphaValue > 0 && !$0.ignoresMouseEvents && $0.frame.contains(DemoStage.global) }
+        guard let window = windows.max(by: { ($0.level.rawValue, -$0.orderedIndex) < ($1.level.rawValue, -$1.orderedIndex) }) else { return }
+        func send(_ type: NSEvent.EventType) {
+            eventNumber += 1
+            if let event = NSEvent.mouseEvent(with: type, location: window.convertPoint(fromScreen: DemoStage.global), modifierFlags: [],
+                                              timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                              context: nil, eventNumber: eventNumber, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1) {
+                window.sendEvent(event)
+            }
+        }
+        target = nil
+        takeFirstClicks(at: DemoStage.global, in: window)
+        let began = time
+        path.append((began, first))
+        send(.leftMouseDown)
+        var last = first
+        for point in points.dropFirst() {
+            await pause(Double(hypot(point.x - last.x, point.y - last.y) / speed))
+            DemoStage.pointer = point
+            path.append((time, point))
+            send(.leftMouseDragged)
+            last = point
+        }
+        send(.leftMouseUp)
+        drags.append([began, time])
+        await pause(0.05)
+    }
+
+    /// Writing as a hand would do it: each character a stroke or two through many points,
+    /// leaning a little and never quite the same twice. From the top left of the writing, in
+    /// the working window; the strokes are on the stage.
+    private func handwriting(_ text: String, at origin: CGPoint, height: CGFloat = 32) -> [[CGPoint]] {
+        // Each character in a box one high: its width, and its strokes.
+        let shapes: [Character: (width: CGFloat, strokes: [[(CGFloat, CGFloat)]])] = [
+            "3": (0.62, [[(0.08, 0.14), (0.3, 0.02), (0.52, 0.06), (0.58, 0.24), (0.46, 0.42), (0.26, 0.48), (0.48, 0.56), (0.6, 0.74), (0.5, 0.94), (0.26, 1.0), (0.06, 0.9)]]),
+            "5": (0.62, [[(0.56, 0.02), (0.2, 0.03), (0.15, 0.44), (0.36, 0.4), (0.54, 0.5), (0.6, 0.72), (0.5, 0.93), (0.28, 1.0), (0.08, 0.9)]]),
+            "6": (0.62, [[(0.52, 0.04), (0.3, 0.2), (0.14, 0.48), (0.1, 0.78), (0.24, 0.98), (0.46, 0.97), (0.58, 0.78), (0.5, 0.58), (0.3, 0.54), (0.13, 0.7)]]),
+            "1": (0.42, [[(0.06, 0.26), (0.28, 0.03), (0.27, 1.0)]]),
+            "x": (0.56, [[(0.06, 0.4), (0.26, 0.68), (0.5, 1.0)], [(0.5, 0.4), (0.28, 0.7), (0.04, 1.0)]]),
+            "=": (0.6, [[(0.06, 0.52), (0.52, 0.5)], [(0.07, 0.76), (0.53, 0.74)]]),
+            " ": (0.34, []),
+        ]
+        var strokes: [[CGPoint]] = []
+        var x = origin.x
+        // The same wobble every time, so the rehearsal and the recording draw alike.
+        var seed: UInt64 = 0x5EED + UInt64(text.unicodeScalars.reduce(0) { $0 &+ Int($1.value) })
+        func wobble() -> CGFloat {
+            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return CGFloat(seed >> 40) / CGFloat(1 << 24) - 0.5
+        }
+        for character in text {
+            guard let shape = shapes[character] else { continue }
+            let lift = wobble() * 2.4
+            for line in shape.strokes {
+                let corners = line.map { CGPoint(x: x + ($0.0 + (1 - $0.1) * 0.14) * height, y: origin.y + lift + $0.1 * height) }
+                var points: [CGPoint] = []
+                for (from, to) in zip(corners, corners.dropFirst()) {
+                    let steps = max(1, Int(hypot(to.x - from.x, to.y - from.y) / 4))
+                    for step in 0..<steps {
+                        let part = CGFloat(step) / CGFloat(steps)
+                        points.append(CGPoint(x: from.x + (to.x - from.x) * part + wobble() * 0.9, y: from.y + (to.y - from.y) * part + wobble() * 0.9))
+                    }
+                }
+                if let end = corners.last { points.append(end) }
+                strokes.append(points.map(stagePoint(inWindow:)))
+            }
+            x += (shape.width + 0.16) * height
+        }
+        return strokes
     }
 
     /// MathPeek is never the active app during a clip, and the first click on a window of an
@@ -595,43 +760,25 @@ final class DemoDirector {
         return learn.demo?.window.contentView.flatMap(find)
     }
 
-    /// Scrolls the roadmap until something on it is clear of the bottom of the window.
-    private func bringIntoView(_ id: String) async {
-        guard let model = learn.demo?.model, let rect = DemoStage.places[id] else { return }
-        let bottom = model.canvasFrame.maxY - 40
-        if rect.maxY > bottom { await scroll(by: bottom - rect.maxY - 60) }
-        await pause(0.3)
-    }
-
-    /// A key on its own: Return, Escape, an arrow.
-    private func key(_ code: UInt16, _ characters: String) async {
-        guard let window = learn.demo?.window,
-              let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                                           windowNumber: window.windowNumber, context: nil, characters: characters,
-                                           charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code) else { return }
-        if !window.performKeyEquivalent(with: event) { window.sendEvent(event) }
-        await pause(0.1)
-    }
-
     /// Two fingers on the trackpad: the roadmap moves and the pointer stays.
     private func scroll(by distance: CGFloat, over seconds: Double = 0.6) async {
         guard let model = learn.demo?.model else { return }
-        let began = CACurrentMediaTime()
+        let began = time
         var done: CGFloat = 0
-        while done != distance {
-            let linear = min((CACurrentMediaTime() - began) / seconds, 1)
+        while true {
+            let linear = min(max((CACurrentMediaTime() - start - began) / seconds, 0), 1)
             let eased = distance * linear * linear * (3 - 2 * linear)
             model.scroll(by: CGSize(width: 0, height: eased - done))
-            done = linear >= 1 ? distance : eased
+            done = eased
             if linear >= 1 { break }
             try? await Task.sleep(for: .milliseconds(12))
         }
+        time = began + seconds
     }
 
-    /// Tells the recording where the pointer is, and MathPeek's windows what it's over: they
-    /// can't see for themselves, since the real pointer is elsewhere.
+    /// Tells MathPeek's windows what the pointer is over: they can't see for themselves,
+    /// since the real pointer is elsewhere.
     private func pointerMoved() {
-        publish()
         let point = DemoStage.global
         bubble.demoPointer(point)
         guard let (window, model) = learn.demo else { return }
@@ -649,16 +796,5 @@ final class DemoDirector {
             if let target, target.contains("/") { model.hover(target, false) }
             if model.hovered != over { model.hovered = over }
         }
-    }
-
-    /// One line for the recording: when the scene started (as CACurrentMediaTime), where the
-    /// stage is in screen coordinates (from the main display's top left), the pointer on
-    /// it, whether the button and the shortcut are down, and whether the scene has finished.
-    private func publish() {
-        guard let clock else { return }
-        let top = (NSScreen.screens.first?.frame.height ?? 0) - DemoStage.frame.maxY
-        let line = String(format: "%.4f %.1f %.1f %.1f %.1f %d %d %d", start, DemoStage.frame.minX, top,
-                          DemoStage.pointer.x, DemoStage.pointer.y, DemoStage.isPressed ? 1 : 0, DemoStage.keysDown ? 1 : 0, isDone ? 1 : 0)
-        try? line.write(to: clock, atomically: true, encoding: .utf8)
     }
 }

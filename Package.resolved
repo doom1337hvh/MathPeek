@@ -1,5 +1,5 @@
 {
-  "originHash" : "a2191ec1ba4a14ce65e4b60006abaa9f17bfda6a36ed6cce1a5619a225d73a81",
+  "originHash" : "91efaae1e73a5297572922e5630a2c54ff1c5a1c65772dbd5069ba01efb3400d",
   "pins" : [
     {
       "identity" : "appshell",
@@ -7,7 +7,7 @@
       "location" : "https://github.com/doom1337hvh/AppShell.git",
       "state" : {
         "branch" : "main",
-        "revision" : "3a100a107c4a3c6f9166d5c355b848ce146fc7d8"
+        "revision" : "cd2b60ee522fc44ca023434a43fd70912881360b"
       }
     }
   ],

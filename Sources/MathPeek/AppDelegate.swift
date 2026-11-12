@@ -75,8 +75,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         learn.showSettings = { [weak self] in self?.settings.show() }
         settings.onResignedKey = { [weak self] in self?.recorder.stop() }
         settings.onClose = { [weak self] in self?.recorder.stop() }
-        // A README clip is recorded off the screen, without a second icon in the menu bar.
-        if !DemoStage.isFilming { menuBar.install() }
+        menuBar.install()
+        // (Settings is open by now in the clip of it, which AppShell plays.)
+        if DemoStage.isFilming { DemoStage.keepOnEveryDesktop() }
         update()
 
         if let scene = DemoScene.current {

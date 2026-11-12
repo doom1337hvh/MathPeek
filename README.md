@@ -133,6 +133,11 @@ Click one to watch it.
 </details>
 
 <details>
+<summary><b>Write on the roadmap</b>: in Try It Yourself, work it out by hand with the pen, rub out a slip, highlight the answer and type a note.</summary>
+<p align="center"><img src="docs/clips/draw.gif" width="820" alt="Working out 3x + 5 = 20 by hand on the roadmap: 3x = 15 and x = 6 written with the pen, the 6 rubbed out with the eraser and a 5 written in yellow, x = 5 highlighted, and a typed note saying take away 5"></p>
+</details>
+
+<details>
 <summary><b>Diagrams</b>: a circle-theorem diagram is read from the drawing and worked out, with the diagram drawn again in the working.</summary>
 <p align="center"><img src="docs/clips/diagram.gif" width="820" alt="Pointing at a circle diagram with 126° at the centre and x at the circumference: the bubble shows x = 63°, and the working redraws the diagram and gives the angle at the centre theorem"></p>
 </details>
@@ -145,6 +150,11 @@ Click one to watch it.
 <details>
 <summary><b>History</b>: every answer is kept by day. Type to search it, and click one to open its working again.</summary>
 <p align="center"><img src="docs/clips/history.gif" width="820" alt="The history list with today's and yesterday's answers, searching for fractions, and opening 3/4 + 5/6 again"></p>
+</details>
+
+<details>
+<summary><b>Settings</b>: General, MathPeek and About.</summary>
+<p align="center"><img src="docs/clips/settings.gif" width="580" alt="The Settings window, clicking through its tabs: General with launch at login and the menu bar icon, MathPeek with the shortcut, the area it reads, angles and Apple Intelligence, and About"></p>
 </details>
 
 ## Requirements

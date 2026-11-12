@@ -14,5 +14,10 @@ doom1337hvh's apps. AppShell's README describes the house format every app follo
 - Build with `scripts/build.sh` (`--install` also copies it to ~/Applications). The app's own
   build steps go in `scripts/hooks/`. Releases: `scripts/release.sh` and docs/RELEASING.md,
   always signed with "MathPeek Local Signing".
-- README clips are recorded from the real app with `-demo <scene>` (`AppShell.demoScene`);
-  nothing is saved during one.
+- README clips: `scripts/record-clips.sh` (AppShell's recorder) records the scenes listed in
+  `scripts/clips.jsonc` from the built app. Launched with `-demo <scene>`, the app acts each one
+  out with made-up problems (`DemoScene.swift`); nothing is saved meanwhile. They're filmed off
+  screen, on AppShell's stage (`Demo.stage`). `scripts/clip-pages.swift` draws the worksheet
+  each scene is acted out on (`docs/clips/pages/`), rehearses the scenes and writes
+  clips.jsonc with each pointer's path: run it after changing a page or a scene, then record.
+  The Settings clip (`settings-tabs`) is AppShell's own.

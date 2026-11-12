@@ -1,0 +1,84 @@
+// The README's clips, recorded from the built app by scripts/record-clips.sh (AppShell's
+// recorder; its scripts/record-clips.swift describes every option).
+//
+// Written by scripts/clip-pages.swift: change a page or a scene there (or the scene's script in
+// Sources/MathPeek/DemoScene.swift) and run it again, rather than editing this. Each scene's
+// backdrop is the page it's acted out on, and its pointer is where the app's own pointer went
+// when the scene was rehearsed.
+//
+// The tour isn't marked "tour": that also makes a 60-frames-a-second video, and with a
+// window this size the recorder falls seconds behind the app, so what's on screen runs ahead
+// of the pointer. It's recorded like the rest, to docs/clips/tour.gif, and docs/demo.gif (the
+// clip at the top of the README) is a copy of that.
+{
+  // Settings for every scene, as launch arguments, which are never saved.
+  "settings": { "isEnabled": true, "areaMode": "aroundPointer", "answerSeconds": 5.0, "angles": "degrees", "useAppleIntelligence": false, "windowTranslucency": 0.55, "showsWhatItSees": false, "keepsHistory": true, "showMenuBarIcon": true, "hotkey": "<data>eyJrZXlDb2RlIjoyNCwibW9kaWZpZXJzIjo2MTQ0LCJrZXlOYW1lIjoiPSJ9</data>" },
+  "scenes": [
+    {
+      "name": "tour", "area": "window", "gifWidth": 1640, "backdrop": "docs/clips/pages/tour.png",
+      "settings": { "demoSpots": "262,283", "demoPage": "docs/clips/pages/tour.png" },
+      "length": 14.32,
+      "pointer": [[-1.00, 654, 507], [0.30, 654, 507], [1.21, 222, 243], [3.91, 222, 243], [4.47, 385, 331], [6.52, 385, 331], [6.98, 459, 261], [8.98, 459, 261], [9.62, 223, 357], [10.12, 223, 357], [10.72, 732, 412]],
+      "clicks": [4.97, 7.33, 9.97],
+    },
+    {
+      "name": "bubble", "area": "window", "gifWidth": 1640, "backdrop": "docs/clips/pages/bubble.png",
+      "settings": { "demoSpots": "306,94;288,204;267,314;221,432", "demoPage": "docs/clips/pages/bubble.png" },
+      "length": 14.94,
+      "pointer": [[-1.00, 654, 507], [0.30, 654, 507], [1.30, 266, 54], [3.95, 266, 54], [4.42, 248, 164], [7.47, 248, 164], [7.95, 227, 274], [10.60, 227, 274], [11.09, 181, 392]],
+      "clicks": [],
+    },
+    {
+      "name": "several", "area": "window", "gifWidth": 1640, "backdrop": "docs/clips/pages/several.png",
+      "settings": { "demoSpots": "195,244", "demoPage": "docs/clips/pages/several.png" },
+      "length": 13.54,
+      "pointer": [[-1.00, 654, 507], [0.30, 654, 507], [1.30, 155, 204], [4.30, 155, 204], [5.10, 498, 423], [7.25, 498, 423], [8.02, 442, 49], [9.92, 442, 49], [10.64, 772, 49]],
+      "clicks": [5.60, 8.37, 10.99],
+    },
+    {
+      "name": "roadmap", "area": "window", "gifWidth": 1640, "backdrop": "docs/clips/pages/roadmap.png",
+      "settings": { "demoSpots": "233,206", "demoPage": "docs/clips/pages/roadmap.png" },
+      "length": 21.32,
+      "pointer": [[-1.00, 654, 507], [0.30, 654, 507], [1.29, 193, 166], [3.69, 193, 166], [4.49, 574, 311], [6.34, 574, 311], [6.84, 459, 236], [9.94, 459, 236], [10.62, 241, 437], [13.02, 241, 437], [13.86, 442, 49], [15.46, 442, 49], [16.05, 266, 173], [17.95, 266, 173], [18.42, 376, 173]],
+      "clicks": [4.99, 7.19, 9.39, 10.97, 14.21, 16.40, 18.77],
+    },
+    {
+      "name": "draw", "area": "window", "gifWidth": 1640, "gifFPS": 15, "backdrop": "docs/clips/pages/draw.png",
+      "settings": { "demoSpots": "", "demoPage": "docs/clips/pages/draw.png" },
+      "length": 18.09,
+      "pointer": [[-1.00, 654, 507], [0.30, 654, 507], [1.30, 64, 513], [1.60, 64, 513], [2.17, 204, 378], [2.22, 204, 378], [2.23, 208, 376], [2.25, 212, 374], [2.27, 219, 375], [2.29, 220, 381], [2.32, 215, 387], [2.34, 209, 388], [2.37, 215, 391], [2.39, 218, 397], [2.42, 214, 403], [2.43, 210, 405], [2.45, 207, 406], [2.47, 200, 402], [2.52, 200, 402], [2.64, 227, 387], [2.69, 227, 387], [2.71, 230, 392], [2.73, 233, 396], [2.75, 236, 401], [2.77, 239, 406], [2.82, 239, 406], [2.94, 242, 387], [2.99, 242, 387], [3.01, 239, 390], [3.02, 236, 394], [3.03, 234, 397], [3.05, 230, 399], [3.07, 227, 403], [3.08, 224, 406], [3.13, 224, 406], [3.25, 266, 390], [3.30, 266, 390], [3.32, 271, 389], [3.34, 276, 389], [3.35, 281, 389], [3.40, 281, 389], [3.52, 266, 398], [3.57, 266, 398], [3.59, 270, 397], [3.61, 275, 397], [3.62, 280, 397], [3.67, 280, 397], [3.79, 308, 383], [3.84, 308, 383], [3.86, 312, 379], [3.88, 316, 376], [3.90, 315, 380], [3.91, 314, 384], [3.93, 313, 389], [3.94, 313, 393], [3.96, 313, 398], [3.98, 312, 402], [3.99, 311, 407], [4.04, 311, 407], [4.16, 343, 374], [4.21, 343, 374], [4.23, 337, 374], [4.25, 331, 374], [4.27, 331, 378], [4.29, 329, 383], [4.30, 328, 387], [4.33, 335, 386], [4.35, 340, 389], [4.37, 341, 396], [4.40, 337, 403], [4.43, 330, 405], [4.45, 324, 402], [4.65, 324, 402], [5.11, 229, 442], [5.16, 229, 442], [5.18, 232, 446], [5.20, 234, 451], [5.22, 237, 455], [5.24, 240, 461], [5.29, 240, 461], [5.41, 242, 442], [5.46, 242, 442], [5.48, 240, 445], [5.49, 237, 448], [5.51, 235, 452], [5.52, 231, 455], [5.54, 229, 458], [5.55, 225, 461], [5.60, 225, 461], [5.72, 268, 447], [5.77, 268, 447], [5.79, 272, 446], [5.81, 277, 446], [5.82, 282, 446], [5.87, 282, 446], [5.99, 266, 454], [6.04, 266, 454], [6.06, 271, 454], [6.08, 276, 454], [6.10, 281, 453], [6.15, 281, 453], [6.27, 324, 432], [6.32, 324, 432], [6.33, 321, 434], [6.35, 316, 436], [6.37, 314, 442], [6.39, 310, 446], [6.41, 309, 451], [6.42, 308, 456], [6.45, 311, 461], [6.47, 319, 462], [6.50, 323, 455], [6.52, 321, 449], [6.55, 315, 448], [6.56, 312, 450], [6.57, 309, 453], [6.92, 309, 453], [7.46, 157, 513], [7.76, 157, 513], [8.29, 304, 438], [8.34, 304, 438], [8.47, 328, 447], [8.59, 306, 458], [8.84, 306, 458], [9.29, 263, 513], [9.59, 263, 513], [10.06, 325, 430], [10.11, 325, 430], [10.13, 319, 430], [10.15, 314, 431], [10.16, 312, 434], [10.18, 311, 439], [10.20, 310, 443], [10.22, 317, 443], [10.24, 323, 445], [10.27, 323, 453], [10.29, 320, 459], [10.32, 312, 461], [10.34, 306, 458], [10.69, 306, 458], [11.29, 95, 513], [11.59, 95, 513], [12.09, 216, 448], [12.14, 216, 448], [12.39, 292, 446], [12.60, 354, 449], [12.95, 354, 449], [13.56, 126, 513], [13.86, 126, 513], [14.58, 432, 394], [16.29, 432, 394], [16.89, 732, 412]],
+      "clicks": [1.45, 7.61, 9.44, 11.44, 13.71, 14.78],
+      "drags": [[2.22, 2.47], [2.69, 2.77], [2.99, 3.08], [3.30, 3.35], [3.57, 3.62], [3.84, 3.99], [4.21, 4.45], [5.16, 5.24], [5.46, 5.55], [5.77, 5.82], [6.04, 6.10], [6.32, 6.57], [8.34, 8.59], [10.11, 10.34], [12.14, 12.60]],
+    },
+    {
+      "name": "try", "area": "window", "gifWidth": 1640, "backdrop": "docs/clips/pages/try.png",
+      "settings": { "demoSpots": "", "demoPage": "docs/clips/pages/try.png" },
+      "length": 9.90,
+      "pointer": [[-1.00, 654, 507], [0.30, 654, 507], [1.20, 167, 571], [1.70, 167, 571], [2.30, 732, 412]],
+      "clicks": [1.55],
+    },
+    {
+      "name": "diagram", "area": "window", "gifWidth": 1640, "backdrop": "docs/clips/pages/diagram.png",
+      "settings": { "demoSpots": "374,342", "demoPage": "docs/clips/pages/diagram.png" },
+      "length": 12.08,
+      "pointer": [[-1.00, 654, 507], [0.30, 654, 507], [1.07, 334, 302], [4.17, 334, 302], [4.64, 401, 388], [7.09, 401, 388], [7.58, 459, 496], [8.08, 459, 496], [8.68, 732, 412]],
+      "clicks": [5.14, 7.93],
+    },
+    {
+      "name": "change", "area": "window", "gifWidth": 1640, "backdrop": "docs/clips/pages/change.png",
+      "settings": { "demoSpots": "262,283", "demoPage": "docs/clips/pages/change.png" },
+      "length": 12.22,
+      "pointer": [[-1.00, 654, 507], [0.30, 654, 507], [1.27, 264, 114], [2.67, 264, 114], [3.12, 275, 114], [7.22, 275, 114], [7.92, 175, 417], [8.42, 175, 417], [9.02, 732, 412]],
+      "clicks": [1.62, 3.47, 8.27],
+    },
+    {
+      "name": "history", "area": "window", "gifWidth": 1640, "backdrop": "docs/clips/pages/history.png",
+      "settings": { "demoSpots": "262,283", "demoPage": "docs/clips/pages/history.png" },
+      "length": 11.61,
+      "pointer": [[-1.00, 654, 507], [0.30, 654, 507], [1.23, 831, 16], [3.13, 831, 16], [4.13, 132, 64], [6.77, 132, 64], [7.51, 442, 224], [8.01, 442, 224], [8.61, 732, 412]],
+      "clicks": [1.58, 4.43, 7.86],
+    },
+    // Settings, clicking through its tabs by itself.
+    { "name": "settings", "demo": "settings-tabs", "area": "window" },
+  ],
+}

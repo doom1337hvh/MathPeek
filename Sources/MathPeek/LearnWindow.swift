@@ -1127,7 +1127,7 @@ final class LearnWindow {
         model.openEntry = { [weak self] entry in self?.open(entry) ?? false }
         let style: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         let frame = CGRect(x: 0, y: 0, width: 1080, height: 760)
-        // For a README clip, a window that stays off the screen (see DemoStage).
+        // For a README clip, a window that can go on the stage off the screen (see DemoStage).
         let window = DemoStage.isFilming ? DemoWindow(contentRect: frame, styleMask: style, backing: .buffered, defer: false)
             : NSWindow(contentRect: frame, styleMask: style, backing: .buffered, defer: false)
         window.title = "MathPeek"
